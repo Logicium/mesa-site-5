@@ -6,8 +6,17 @@ import { getStoredToken } from '../../platform/contentClient'
 const sites = ref<Awaited<ReturnType<typeof contentClient.listSites>>>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
+const showDeactivated = ref(false)
 const redeploying = ref<Record<string, boolean>>({})
 const redeployMsg = ref<Record<string, string>>({})
+
+// Rename (inline edit of displayName)
+const editingName = ref<string | null>(null)
+const nameDraft = ref<string>('')
+const renaming = ref<Record<string, boolean>>({})
+
+// Deactivate / activate
+const deactivating = ref<Record<string, boolean>>({})
 const updateStatus = ref<Record<string, { current: string | null; latest: string | null; hasUpdate: boolean; neverChecked?: boolean } | null>>({})
 const updateChecking = ref<Record<string, boolean>>({})
 const updating = ref<Record<string, boolean>>({})
@@ -276,6 +285,69 @@ function formatMoney(amount: number | null | undefined, currency: string | null 
   catch { return `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}` }
 }
 
+function siteTitle(s: { slug: string; displayName?: string | null }) {
+  return (s.displayName && s.displayName.trim()) || s.slug
+}
+
+function startRename(s: { id: string; slug: string; displayName?: string | null }) {
+  editingName.value = s.id
+  nameDraft.value = siteTitle(s)
+}
+
+function cancelRename() {
+  editingName.value = null
+  nameDraft.value = ''
+}
+
+async function saveRename(siteId: string) {
+  renaming.value[siteId] = true
+  try {
+    const r = await contentClient.renameSite(siteId, nameDraft.value.trim())
+    const idx = sites.value.findIndex(x => x.id === siteId)
+    if (idx >= 0) sites.value[idx] = { ...sites.value[idx], displayName: r.displayName }
+    editingName.value = null
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    renaming.value[siteId] = false
+  }
+}
+
+async function reloadSites() {
+  sites.value = await contentClient.listSites({ includeDeactivated: showDeactivated.value })
+}
+
+async function toggleShowDeactivated() {
+  showDeactivated.value = !showDeactivated.value
+  try { await reloadSites() } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+}
+
+async function confirmDeactivate(s: { id: string; slug: string; displayName?: string | null }) {
+  const name = siteTitle(s)
+  if (!confirm(`Deactivate “${name}”?\n\nThe site stays online for visitors but is hidden from the admin list. You can reactivate it later from “Show deactivated.”`)) return
+  deactivating.value[s.id] = true
+  try {
+    await contentClient.deactivateSite(s.id)
+    await reloadSites()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    deactivating.value[s.id] = false
+  }
+}
+
+async function confirmActivate(s: { id: string }) {
+  deactivating.value[s.id] = true
+  try {
+    await contentClient.activateSite(s.id)
+    await reloadSites()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    deactivating.value[s.id] = false
+  }
+}
+
 function formatTimestamp(unixSec: number) {
   try { return new Date(unixSec * 1000).toLocaleString() } catch { return String(unixSec) }
 }
@@ -295,7 +367,7 @@ function isStuck(status: string) {
 onMounted(async () => {
   loading.value = true
   try {
-    sites.value = await contentClient.listSites()
+    sites.value = await contentClient.listSites({ includeDeactivated: showDeactivated.value })
     for (const s of sites.value) {
       if (liveUrl(s)) {
         void checkUpdate(s.id)
@@ -337,12 +409,17 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
           <template v-else>{{ liveCount }} of {{ sites.length }} live · click a card to open it in a new tab.</template>
         </p>
       </div>
+      <div class="adm-page__head-actions">
+        <button type="button" class="adm-btn adm-btn--sm adm-btn--ghost" @click="toggleShowDeactivated">
+          {{ showDeactivated ? 'Hide deactivated' : 'Show deactivated' }}
+        </button>
+      </div>
     </header>
 
     <p v-if="error" class="adm-msg-err">{{ error }}</p>
 
     <div v-if="sites.length" class="site-grid">
-      <article v-for="s in sites" :key="s.id" class="site-card">
+      <article v-for="s in sites" :key="s.id" class="site-card" :class="{ 'site-card--deactivated': !!s.deactivatedAt }">
         <a
           v-if="liveUrl(s)"
           :href="liveUrl(s)"
@@ -371,9 +448,27 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
         <div class="site-card__body">
           <div class="site-card__top">
             <span class="adm-eyebrow">{{ s.archetype }}</span>
-            <span class="adm-badge" :class="statusClass(s.status)">{{ s.status }}</span>
+            <span v-if="s.deactivatedAt" class="adm-badge adm-badge--info">deactivated</span>
+            <span v-else class="adm-badge" :class="statusClass(s.status)">{{ s.status }}</span>
           </div>
-          <h2 class="site-card__title">{{ s.slug }}</h2>
+          <div v-if="editingName === s.id" class="site-card__rename">
+            <input
+              v-model="nameDraft"
+              class="adm-input"
+              type="text"
+              maxlength="80"
+              placeholder="Business name"
+              @keyup.enter="saveRename(s.id)"
+              @keyup.esc="cancelRename"
+            />
+            <button type="button" class="adm-btn adm-btn--sm adm-btn--primary" :disabled="renaming[s.id]" @click="saveRename(s.id)">{{ renaming[s.id] ? 'Saving…' : 'Save' }}</button>
+            <button type="button" class="adm-btn adm-btn--sm adm-btn--ghost" @click="cancelRename">Cancel</button>
+          </div>
+          <h2 v-else class="site-card__title">
+            {{ siteTitle(s) }}
+            <button type="button" class="site-card__rename-btn" title="Rename" @click="startRename(s)">✏</button>
+          </h2>
+          <p v-if="s.displayName && s.displayName !== s.slug" class="adm-subtle site-card__slug">{{ s.slug }}</p>
           <a v-if="liveUrl(s)" :href="liveUrl(s)" target="_blank" rel="noopener" class="adm-link site-card__url">
             {{ displayHost(liveUrl(s)) }}
           </a>
@@ -427,6 +522,19 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
               :title="'Check Stripe payment + webhook status'"
               @click="toggleBilling(s.id)"
             >{{ billingOpen[s.id] ? '× Billing' : 'Check billing' }}</button>
+            <button
+              v-if="!s.deactivatedAt"
+              type="button" class="adm-btn adm-btn--sm adm-btn--ghost site-card__deactivate"
+              :disabled="deactivating[s.id]"
+              :title="'Hide from admin (keeps Vercel project + repo intact)'"
+              @click="confirmDeactivate(s)"
+            >{{ deactivating[s.id] ? '…' : 'Deactivate' }}</button>
+            <button
+              v-else
+              type="button" class="adm-btn adm-btn--sm adm-btn--primary"
+              :disabled="deactivating[s.id]"
+              @click="confirmActivate(s)"
+            >{{ deactivating[s.id] ? '…' : 'Reactivate' }}</button>
           </div>
 
           <p v-if="redeployMsg[s.id]" class="adm-muted site-card__msg">{{ redeployMsg[s.id] }}</p>
@@ -554,9 +662,7 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
 .site-card__placeholder {
   position: absolute; inset: 0;
   display: grid; place-items: center;
-  background:
-    linear-gradient(135deg, rgba(196,164,124,0.08) 0%, transparent 50%),
-    repeating-linear-gradient(45deg, var(--adm-surface-2) 0 8px, var(--adm-surface) 8px 16px);
+  background: var(--adm-surface-2);
   color: var(--adm-text-subtle);
   font-size: 0.85rem; letter-spacing: 0.05em;
 }
@@ -587,7 +693,20 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
   letter-spacing: -0.01em; line-height: 1.1;
   margin: 0.1rem 0 0;
   color: var(--adm-text);
+  display: inline-flex; align-items: baseline; gap: 0.4rem;
 }
+.site-card__rename-btn {
+  background: none; border: none; padding: 0.1rem 0.3rem;
+  color: var(--adm-text-muted); cursor: pointer;
+  font-size: 0.9rem; line-height: 1;
+  border-radius: 4px;
+}
+.site-card__rename-btn:hover { color: var(--adm-accent); background: var(--adm-surface-2); }
+.site-card__rename { display: flex; gap: 0.35rem; align-items: stretch; margin-top: 0.2rem; }
+.site-card__rename .adm-input { flex: 1; }
+.site-card__slug { font-size: 0.78rem; margin: 0; }
+.site-card--deactivated { opacity: 0.65; filter: grayscale(0.4); }
+.site-card__deactivate { margin-left: auto; }
 .site-card__url {
   font-size: 0.82rem; word-break: break-all;
 }
