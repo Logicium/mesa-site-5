@@ -7,7 +7,8 @@ import '@apotome/archetype-shared/styles/base.css'
 import './styles/themes.css'
 import './styles/scrollbar.css'
 import { PLATFORM_ENABLED } from '@apotome/archetype-shared/platform/config'
-import { useSiteContentStore } from '@apotome/archetype-shared/platform/siteContentStore'
+import { useSiteContentStore, applyDeep } from '@apotome/archetype-shared/platform/siteContentStore'
+import { siteConfig } from './config/site.config'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -15,9 +16,13 @@ app.use(pinia)
 app.use(router)
 
 async function boot() {
+  const store = useSiteContentStore(pinia)
+  store.setBuildTimeConfig(siteConfig)
   if (PLATFORM_ENABLED) {
-    // Hydrate the runtime content overlay before mount so the first render is correct.
-    try { await useSiteContentStore(pinia).hydrate() } catch { /* fall back to build-time config */ }
+    try {
+      await store.hydrate()
+      applyDeep(siteConfig as unknown as Record<string, unknown>, store.config)
+    } catch { /* fall back to build-time config */ }
   }
   app.mount('#app')
 }
