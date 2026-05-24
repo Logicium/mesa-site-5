@@ -4,10 +4,11 @@ import { RouterLink } from 'vue-router'
 import { contentClient } from '../../platform/contentClient'
 
 type Order = Awaited<ReturnType<typeof contentClient.listOrders>>[number]
-type BillingInfo = Awaited<ReturnType<typeof contentClient.getBillingStatus>>
+type BillingInfo = Awaited<ReturnType<typeof contentClient.getOrderBillingStatus>>
 
 const orders = ref<Order[]>([])
 const error = ref<string | null>(null)
+// Diagnostics keyed by order.id (works whether or not a siteId exists yet).
 const billing = ref<Record<string, BillingInfo | null>>({})
 const billingLoading = ref<Record<string, boolean>>({})
 const billingMsg = ref<Record<string, string>>({})
@@ -20,32 +21,41 @@ async function load() {
   catch (e) { error.value = e instanceof Error ? e.message : String(e) }
 }
 
-async function checkBilling(siteId: string) {
-  if (!siteId) return
-  billingLoading.value[siteId] = true
-  billingMsg.value[siteId] = ''
+async function checkBilling(orderId: string) {
+  if (!orderId) return
+  billingLoading.value[orderId] = true
+  billingMsg.value[orderId] = ''
   try {
-    billing.value[siteId] = await contentClient.getBillingStatus(siteId)
-    expanded.value = siteId
+    // Prefer the site-level endpoint when a siteId exists so we get the
+    // exact same diagnostics as the Sites view; fall back to the order
+    // endpoint for orders that never produced a site (webhook never fired).
+    const order = orders.value.find(o => o.id === orderId)
+    billing.value[orderId] = order?.siteId
+      ? await contentClient.getBillingStatus(order.siteId)
+      : await contentClient.getOrderBillingStatus(orderId)
+    expanded.value = orderId
   } catch (e) {
-    billingMsg.value[siteId] = e instanceof Error ? e.message : String(e)
+    billingMsg.value[orderId] = e instanceof Error ? e.message : String(e)
   } finally {
-    billingLoading.value[siteId] = false
+    billingLoading.value[orderId] = false
   }
 }
 
-async function resolveBilling(siteId: string) {
-  resolving.value[siteId] = true
-  billingMsg.value[siteId] = ''
+async function resolveBilling(orderId: string) {
+  resolving.value[orderId] = true
+  billingMsg.value[orderId] = ''
   try {
-    const r = await contentClient.resolveBilling(siteId)
-    billingMsg.value[siteId] = `Resolved → order ${r.orderStatus}. Provisioning queued.`
+    const order = orders.value.find(o => o.id === orderId)
+    const r = order?.siteId
+      ? await contentClient.resolveBilling(order.siteId)
+      : await contentClient.resolveOrderBilling(orderId)
+    billingMsg.value[orderId] = `Resolved → order ${r.orderStatus}. Provisioning queued.`
     await load()
-    await checkBilling(siteId)
+    await checkBilling(orderId)
   } catch (e) {
-    billingMsg.value[siteId] = e instanceof Error ? e.message : String(e)
+    billingMsg.value[orderId] = e instanceof Error ? e.message : String(e)
   } finally {
-    resolving.value[siteId] = false
+    resolving.value[orderId] = false
   }
 }
 
@@ -54,10 +64,15 @@ async function retry(id: string) {
   await load()
 }
 
-function toggleExpand(siteId: string | undefined) {
-  if (!siteId) return
-  if (expanded.value === siteId) { expanded.value = null; return }
-  void checkBilling(siteId)
+function toggleExpand(orderId: string) {
+  if (expanded.value === orderId) { expanded.value = null; return }
+  void checkBilling(orderId)
+}
+
+function actionLabel(o: Order) {
+  if (billingLoading.value[o.id]) return 'Checking…'
+  if (expanded.value === o.id) return 'Hide'
+  return o.siteId ? 'Stripe status' : 'Recheck Stripe'
 }
 
 onMounted(load)
@@ -71,7 +86,8 @@ onMounted(load)
         <h1 class="adm-title">Billing</h1>
         <p class="adm-subtitle">
           Order history with live Stripe reconciliation. If an order is stuck on
-          <em>pending</em> but Stripe shows it paid, you can resolve it here.
+          <em>pending</em> but Stripe shows it paid (webhook never landed),
+          click <em>Recheck Stripe</em> on the row to resolve it manually.
           For build/deploy logs see <RouterLink to="/admin/deployments">Deployments</RouterLink>.
         </p>
       </div>
@@ -107,12 +123,11 @@ onMounted(load)
                 <td class="adm-muted">{{ o.failureReason || '' }}</td>
                 <td class="bl-actions">
                   <button
-                    v-if="o.siteId"
                     type="button"
                     class="adm-btn adm-btn--ghost adm-btn--sm"
-                    :disabled="!!billingLoading[o.siteId]"
-                    @click="toggleExpand(o.siteId)"
-                  >{{ billingLoading[o.siteId!] ? 'Checking…' : (expanded === o.siteId ? 'Hide' : 'Stripe status') }}</button>
+                    :disabled="!!billingLoading[o.id]"
+                    @click="toggleExpand(o.id)"
+                  >{{ actionLabel(o) }}</button>
                   <button
                     v-if="o.status === 'failed'"
                     type="button"
@@ -121,56 +136,54 @@ onMounted(load)
                   >Retry</button>
                 </td>
               </tr>
-              <tr v-if="o.siteId && expanded === o.siteId" class="bl-detail-row">
+              <tr v-if="expanded === o.id" class="bl-detail-row">
                 <td colspan="6">
-                  <p v-if="billingMsg[o.siteId!]" class="adm-msg">{{ billingMsg[o.siteId!] }}</p>
+                  <p v-if="billingMsg[o.id]" class="adm-msg">{{ billingMsg[o.id] }}</p>
 
-                  <template v-if="billing[o.siteId!]">
+                  <template v-if="billing[o.id]">
                     <dl class="bl-grid">
-                      <div><dt>Order status</dt><dd>{{ billing[o.siteId!]!.orderStatus }}</dd></div>
-                      <div><dt>Stripe configured</dt><dd>{{ billing[o.siteId!]!.stripeConfigured ? 'yes' : 'no' }}</dd></div>
-                      <div v-if="billing[o.siteId!]!.stripeSessionId">
+                      <div><dt>Order status</dt><dd>{{ billing[o.id]!.orderStatus }}</dd></div>
+                      <div><dt>Stripe configured</dt><dd>{{ billing[o.id]!.stripeConfigured ? 'yes' : 'no' }}</dd></div>
+                      <div v-if="billing[o.id]!.stripeSessionId">
                         <dt>Checkout session</dt>
-                        <dd class="adm-mono">{{ billing[o.siteId!]!.stripeSessionId }}</dd>
+                        <dd class="adm-mono">{{ billing[o.id]!.stripeSessionId }}</dd>
                       </div>
-                      <div v-if="billing[o.siteId!]!.session">
+                      <div v-if="billing[o.id]!.session">
                         <dt>Payment status</dt>
-                        <dd>{{ billing[o.siteId!]!.session?.paymentStatus || '—' }}</dd>
+                        <dd>{{ billing[o.id]!.session?.paymentStatus || '—' }}</dd>
                       </div>
-                      <div v-if="billing[o.siteId!]!.paymentIntent">
+                      <div v-if="billing[o.id]!.paymentIntent">
                         <dt>PaymentIntent</dt>
-                        <dd>{{ billing[o.siteId!]!.paymentIntent?.status || '—' }}</dd>
+                        <dd>{{ billing[o.id]!.paymentIntent?.status || '—' }}</dd>
                       </div>
-                      <div v-if="billing[o.siteId!]!.failureReason">
+                      <div v-if="billing[o.id]!.failureReason">
                         <dt>Failure reason</dt>
-                        <dd>{{ billing[o.siteId!]!.failureReason }}</dd>
+                        <dd>{{ billing[o.id]!.failureReason }}</dd>
                       </div>
                     </dl>
 
-                    <p v-if="billing[o.siteId!]!.notes?.length" class="adm-muted">
-                      <span v-for="(n, i) in billing[o.siteId!]!.notes" :key="i">• {{ n }}<br /></span>
-                    </p>
+                    <p v-if="billing[o.id]!.notes" class="adm-muted">{{ billing[o.id]!.notes }}</p>
 
                     <div class="bl-detail-actions">
                       <button
-                        v-if="billing[o.siteId!]!.canResolve"
+                        v-if="billing[o.id]!.canResolve"
                         type="button"
                         class="adm-btn adm-btn--primary adm-btn--sm"
-                        :disabled="!!resolving[o.siteId!]"
-                        @click="resolveBilling(o.siteId!)"
-                      >{{ resolving[o.siteId!] ? 'Resolving…' : 'Mark paid & provision' }}</button>
+                        :disabled="!!resolving[o.id]"
+                        @click="resolveBilling(o.id)"
+                      >{{ resolving[o.id] ? 'Resolving…' : 'Mark paid & provision' }}</button>
                       <button
                         type="button"
                         class="adm-btn adm-btn--ghost adm-btn--sm"
-                        :disabled="!!billingLoading[o.siteId!]"
-                        @click="checkBilling(o.siteId!)"
+                        :disabled="!!billingLoading[o.id]"
+                        @click="checkBilling(o.id)"
                       >Re-check</button>
                     </div>
 
-                    <details v-if="billing[o.siteId!]!.webhookEvents?.length" class="bl-events">
-                      <summary>Recent webhook events ({{ billing[o.siteId!]!.webhookEvents!.length }})</summary>
+                    <details v-if="billing[o.id]!.webhookEvents?.length" class="bl-events">
+                      <summary>Recent webhook events ({{ billing[o.id]!.webhookEvents!.length }})</summary>
                       <ul>
-                        <li v-for="ev in billing[o.siteId!]!.webhookEvents!" :key="ev.id">
+                        <li v-for="ev in billing[o.id]!.webhookEvents!" :key="ev.id">
                           <span class="adm-mono">{{ ev.type }}</span>
                           <span class="adm-muted"> · {{ new Date(ev.created * 1000).toLocaleString() }}</span>
                         </li>
