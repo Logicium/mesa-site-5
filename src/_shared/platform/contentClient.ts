@@ -4,6 +4,16 @@
  */
 import { PLATFORM_API, PLATFORM_SLUG } from './config'
 
+export type GooglePlacePreview = {
+  placeId: string
+  name: string
+  address: string
+  rating: number | null
+  totalRatings: number | null
+  url: string | null
+  reviews: Array<{ author: string; rating: number; text: string; time: number; relativeTime: string }>
+}
+
 const SESSION_KEY = 'archetype_session'
 export function getStoredToken(): string | null { try { return localStorage.getItem(SESSION_KEY) } catch { return null } }
 export function storeSessionToken(t: string) { try { localStorage.setItem(SESSION_KEY, t) } catch {} }
@@ -80,7 +90,10 @@ export const contentClient = {
   },
 
   // --- Admin ---
-  listSites: () => request<Array<{ id: string; slug: string; archetype: string; status: string; productionUrl?: string; customDomain?: string }>>('GET', '/admin/sites'),
+  listSites: (opts: { includeDeactivated?: boolean } = {}) => request<Array<{ id: string; slug: string; displayName: string | null; archetype: string; status: string; productionUrl?: string; customDomain?: string; deactivatedAt?: string | null }>>('GET', `/admin/sites${opts.includeDeactivated ? '?includeDeactivated=1' : ''}`),
+  renameSite: (siteId: string, displayName: string) => request<{ id: string; displayName: string | null }>('PUT', `/admin/sites/${siteId}`, { displayName }),
+  deactivateSite: (siteId: string) => request<{ id: string; deactivatedAt: string }>('POST', `/admin/sites/${siteId}/deactivate`),
+  activateSite: (siteId: string) => request<{ id: string; deactivatedAt: string | null }>('POST', `/admin/sites/${siteId}/activate`),
   getDraft: (siteId: string) => request<{ version: number; published: boolean; payload: Record<string, unknown> }>('GET', `/admin/sites/${siteId}/content/draft`),
   saveDraft: (siteId: string, payload: Record<string, unknown>) => request<{ version: number; published: boolean }>('PUT', `/admin/sites/${siteId}/content/draft`, { payload }),
   publish: (siteId: string, payload?: Record<string, unknown>) => request<{ version: number; publishedAt: string }>('POST', `/admin/sites/${siteId}/content/publish`, { payload }),
@@ -91,8 +104,11 @@ export const contentClient = {
   listSubmissions: (siteId: string) => request<Array<{ id: string; type: string; payload: Record<string, string>; readAt?: string; createdAt: string }>>('GET', `/admin/sites/${siteId}/submissions`),
   markSubmissionRead: (siteId: string, subId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/submissions/${subId}/read`),
 
-  setGooglePlace: (siteId: string, placeId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/google-place`, { placeId }),
-  addManualReview: (siteId: string, body: { author: string; rating: number; text: string }) => request<{ id: string }>('POST', `/admin/sites/${siteId}/reviews/manual`, body),
+  setGooglePlace: (siteId: string, placeId: string) => request<{ ok: true; placeId: string; preview: GooglePlacePreview | null }>('POST', `/admin/sites/${siteId}/google-place`, { placeId }),
+  getGooglePlace: (siteId: string) => request<{ placeId: string | null; preview: GooglePlacePreview | null }>('GET', `/admin/sites/${siteId}/google-place`),
+  disconnectGooglePlace: (siteId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/google-place/disconnect`),
+  searchGooglePlaces: (siteId: string, q: string) => request<{ results: Array<{ placeId: string; name: string; address: string; rating: number | null; totalRatings: number | null }> }>('GET', `/admin/sites/${siteId}/google-places/search?q=${encodeURIComponent(q)}`),
+  listAdminReviews: (siteId: string) => request<Array<{ id: string; rating: number; author: string; text: string; source: string; fetchedAt: string }>>('GET', `/admin/sites/${siteId}/reviews`),
 
   getInstagramConnect: (siteId: string) => request<{ url: string }>('GET', `/admin/sites/${siteId}/instagram/connect`),
   disconnectInstagram: (siteId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/instagram/disconnect`),
@@ -108,6 +124,23 @@ export const contentClient = {
 
   listOrders: () => request<Array<{ id: string; archetype: string; plan: string; status: string; siteId?: string; createdAt: string; failureReason?: string }>>('GET', '/admin/orders'),
   retryOrder: (orderId: string) => request<{ ok: true }>('POST', `/admin/orders/${orderId}/retry`),
+  /** Order-level Stripe diagnostic (works for pending orders with no site yet). */
+  getOrderBillingStatus: (orderId: string) => request<{
+    orderId: string
+    orderStatus: string
+    stripeSessionId: string | null
+    stripeCustomerId: string | null
+    failureReason: string | null
+    stripeConfigured?: boolean
+    session?: { id: string; paymentStatus: string | null; status: string | null; amountTotal: number | null; currency: string | null; customerEmail: string | null; createdAt: string } | null
+    paymentIntent?: { id: string; status: string; amount: number; amountReceived: number; lastPaymentError: string | null } | null
+    webhookEvents?: Array<{ id: string; type: string; created: number }>
+    canResolve?: boolean
+    notes?: string | null
+    error?: string
+  }>('GET', `/admin/orders/${orderId}/billing-status`),
+  /** Order-level resolve — marks paid + enqueues provisioning when Stripe confirms but the webhook never landed. */
+  resolveOrderBilling: (orderId: string) => request<{ ok: true; orderId: string; orderStatus: string }>('POST', `/admin/orders/${orderId}/resolve-billing`),
   getDeployLogs: (siteId: string) => request<Array<{ step: string; status: string; message?: string; durationMs?: number; createdAt: string }>>('GET', `/admin/sites/${siteId}/deploy-logs`),
   redeploySite: (siteId: string) => request<{ ok: boolean; deploymentId: string; url: string }>('POST', `/admin/sites/${siteId}/redeploy`),
 
