@@ -1,8 +1,10 @@
 <script setup lang="ts">
-// ─── Types (mirrors MesaSiteConfig) ──────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 import { computed, onMounted, ref, watch, reactive } from 'vue'
 import { contentClient } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import { tabsForArchetype, type TabId } from '../contentSchemas'
+import AiCopyButton from '../components/AiCopyButton.vue'
 
 interface PhotoSlot { src: string; alt?: string; caption?: string }
 interface MenuItem { name: string; description?: string; price: string; tags?: string[] }
@@ -11,13 +13,28 @@ interface HourRow { day: string; open: string }
 interface SocialLink { label: string; href: string }
 interface FactRow { label: string; value: string }
 interface Testimonial { quote: string; author: string; source?: string }
+// Archetype-specific item types
+interface RoomItem    { name: string; description?: string; rate?: string; capacity?: string; photo?: string }
+interface ServiceItem { name: string; description?: string; price?: string; duration?: string }
+interface ProductItem { name: string; description?: string; price?: string; photo?: string; href?: string }
+interface PillarItem  { title: string; body?: string }
+
 interface SiteContent {
   brand: string; tagline: string; blurb: string; theme: string; swatch: string; variant: string
   contact: { address: string; phone: string; email: string; mapEmbedUrl?: string }
   hours: HourRow[]
   photos: { hero: PhotoSlot; about: PhotoSlot; gallery: PhotoSlot[] }
   story: { title: string; paragraphs: string[]; facts?: FactRow[] }
+  // mesa
   menu: { intro?: string; categories: MenuCategory[]; fullMenuUrl?: string }
+  // hearth
+  rooms: { intro?: string; items: RoomItem[] }
+  // keystone
+  services: { intro?: string; items: ServiceItem[] }
+  // vault
+  products: { intro?: string; items: ProductItem[] }
+  // project
+  mission: { statement: string; pillars: PillarItem[] }
   testimonials: Testimonial[]
   social: SocialLink[]
 }
@@ -30,6 +47,10 @@ function blankContent(): SiteContent {
     photos: { hero: { src: '', alt: '' }, about: { src: '', alt: '' }, gallery: [] },
     story: { title: '', paragraphs: [''], facts: [] },
     menu: { intro: '', categories: [], fullMenuUrl: '' },
+    rooms:    { intro: '', items: [] },
+    services: { intro: '', items: [] },
+    products: { intro: '', items: [] },
+    mission:  { statement: '', pillars: [] },
     testimonials: [],
     social: [],
   }
@@ -37,12 +58,25 @@ function blankContent(): SiteContent {
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
+const archetype = computed(() => activeSites.activeSite?.archetype ?? '')
+const tabs = computed(() => tabsForArchetype(archetype.value))
+const activeTab = ref<TabId>('brand')
+watch(tabs, (next) => {
+  if (!next.some(t => t.id === activeTab.value)) activeTab.value = next[0]?.id ?? 'brand'
+})
+
 const version = ref(0)
 const published = ref(false)
 const statusMsg = ref<string>('')
 const error = ref<string | null>(null)
 const uploading = ref<Record<string, boolean>>({})
 const c = reactive<SiteContent>(blankContent())
+
+/** Minimal context the AI prompt can reference. */
+const aiContext = computed(() => ({
+  brand: c.brand, tagline: c.tagline, blurb: c.blurb,
+  archetype: archetype.value, theme: c.theme, swatch: c.swatch,
+}))
 
 function applyPayload(raw: Record<string, unknown>) {
   const p = raw as Partial<SiteContent>
@@ -57,6 +91,10 @@ function applyPayload(raw: Record<string, unknown>) {
   if (p.photos   !== undefined) Object.assign(c.photos,  p.photos)
   if (p.story    !== undefined) Object.assign(c.story,   p.story)
   if (p.menu     !== undefined) Object.assign(c.menu,    p.menu)
+  if (p.rooms    !== undefined) Object.assign(c.rooms,    p.rooms)
+  if (p.services !== undefined) Object.assign(c.services, p.services)
+  if (p.products !== undefined) Object.assign(c.products, p.products)
+  if (p.mission  !== undefined) Object.assign(c.mission,  p.mission)
   if (p.testimonials !== undefined) { c.testimonials.length = 0; c.testimonials.push(...(p.testimonials as Testimonial[])) }
   if (p.social   !== undefined) { c.social.length = 0; c.social.push(...(p.social as SocialLink[])) }
 }
@@ -130,7 +168,34 @@ function removeMenuItem(cat: MenuCategory, i: number){ cat.items.splice(i, 1) }
 function tagsStr(item: MenuItem)                     { return (item.tags ?? []).join(', ') }
 function setTags(item: MenuItem, v: string)          { item.tags = v.split(',').map(t => t.trim()).filter(Boolean) }
 
-onMounted(loadDraft)
+// Archetype-specific helpers
+function addRoom()    { c.rooms.items.push({ name: '', description: '', rate: '', capacity: '', photo: '' }) }
+function removeRoom(i: number) { c.rooms.items.splice(i, 1) }
+function addService() { c.services.items.push({ name: '', description: '', price: '', duration: '' }) }
+function removeService(i: number) { c.services.items.splice(i, 1) }
+function addProduct() { c.products.items.push({ name: '', description: '', price: '', photo: '', href: '' }) }
+function removeProduct(i: number) { c.products.items.splice(i, 1) }
+function addPillar()  { c.mission.pillars.push({ title: '', body: '' }) }
+function removePillar(i: number)  { c.mission.pillars.splice(i, 1) }
+
+async function uploadInline(target: { src?: string; photo?: string }, key: string, file: File, prop: 'src' | 'photo' = 'src') {
+  uploading.value[key] = true; error.value = null
+  try {
+    const base64 = await readFile(file)
+    const r = await contentClient.uploadMedia(siteId.value, file.name, file.type, base64)
+    target[prop] = r.url
+  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+  finally { uploading.value[key] = false }
+}
+function onInlineFile(target: { src?: string; photo?: string }, key: string, evt: Event, prop: 'src' | 'photo' = 'src') {
+  const file = (evt.target as HTMLInputElement).files?.[0]
+  if (file) uploadInline(target, key, file, prop)
+}
+
+onMounted(async () => {
+  if (!activeSites.sites.length) { try { await activeSites.refresh() } catch { /* ignore */ } }
+  await loadDraft()
+})
 watch(siteId, loadDraft)
 </script>
 
@@ -149,15 +214,43 @@ watch(siteId, loadDraft)
     <p v-if="!siteId" class="err">Select a site from the header dropdown.</p>
 
     <div v-if="siteId" class="cv-body">
+      <!-- Tab bar -->
+      <nav class="cv-tabs" role="tablist">
+        <button
+          v-for="t in tabs"
+          :key="t.id"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === t.id"
+          class="cv-tab"
+          :class="{ 'cv-tab--active': activeTab === t.id }"
+          @click="activeTab = t.id"
+        >{{ t.label }}</button>
+      </nav>
 
       <!-- ── Brand ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'brand'">
         <legend>Brand</legend>
         <div class="row-2">
-          <label>Business name<input v-model="c.brand" /></label>
-          <label>Tagline<input v-model="c.tagline" /></label>
+          <label>
+            <span class="lbl-row">Business name
+              <AiCopyButton :site-id="siteId" field="brand" prompt="A short business / brand name" :context="aiContext" @pick="(v) => c.brand = v" />
+            </span>
+            <input v-model="c.brand" />
+          </label>
+          <label>
+            <span class="lbl-row">Tagline
+              <AiCopyButton :site-id="siteId" field="tagline" prompt="A short, evocative tagline under 12 words" :context="aiContext" @pick="(v) => c.tagline = v" />
+            </span>
+            <input v-model="c.tagline" />
+          </label>
         </div>
-        <label>Short blurb (meta description &amp; intro paragraph)<textarea v-model="c.blurb" rows="3" /></label>
+        <label>
+          <span class="lbl-row">Short blurb (meta description &amp; intro paragraph)
+            <AiCopyButton :site-id="siteId" field="blurb" prompt="A warm, concrete 2-3 sentence blurb under 60 words" :context="aiContext" @pick="(v) => c.blurb = v" />
+          </span>
+          <textarea v-model="c.blurb" rows="3" />
+        </label>
         <div class="row-3">
           <label>Theme
             <select v-model="c.theme">
@@ -178,7 +271,7 @@ watch(siteId, loadDraft)
       </fieldset>
 
       <!-- ── Contact ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'contact'">
         <legend>Contact</legend>
         <div class="row-2">
           <label>Address<input v-model="c.contact.address" /></label>
@@ -191,7 +284,7 @@ watch(siteId, loadDraft)
       </fieldset>
 
       <!-- ── Hours ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'hours'">
         <legend>Hours</legend>
         <div v-for="(h, i) in c.hours" :key="i" class="list-row">
           <input v-model="h.day"  placeholder="Day / range (e.g. Tuesday – Thursday)" class="flex-3" />
@@ -202,7 +295,7 @@ watch(siteId, loadDraft)
       </fieldset>
 
       <!-- ── Photos ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'photos'">
         <legend>Photos</legend>
 
         <div class="photo-row">
@@ -244,11 +337,12 @@ watch(siteId, loadDraft)
       </fieldset>
 
       <!-- ── Story / About ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'story'">
         <legend>Story / About section</legend>
         <label>Section heading<input v-model="c.story.title" /></label>
         <div v-for="(_, i) in c.story.paragraphs" :key="i" class="list-row">
           <textarea v-model="c.story.paragraphs[i]" rows="3" class="flex-1" placeholder="Paragraph text…" />
+          <AiCopyButton :site-id="siteId" :field="`story paragraph ${i + 1}`" prompt="A single paragraph (~60 words) for the About section" :context="aiContext" @pick="(v) => c.story.paragraphs[i] = v" />
           <button type="button" class="btn-remove" @click="removeParagraph(i)">×</button>
         </div>
         <button type="button" class="btn-add" @click="addParagraph">+ Add paragraph</button>
@@ -262,8 +356,8 @@ watch(siteId, loadDraft)
         <button type="button" class="btn-add" @click="addFact">+ Add stat</button>
       </fieldset>
 
-      <!-- ── Menu ── -->
-      <fieldset>
+      <!-- ── Menu (mesa) ── -->
+      <fieldset v-if="activeTab === 'menu'">
         <legend>Menu</legend>
         <div class="row-2">
           <label>Menu intro line<input v-model="c.menu.intro" placeholder="Updated weekly with…" /></label>
@@ -288,8 +382,94 @@ watch(siteId, loadDraft)
         <button type="button" class="btn-add" @click="addCategory">+ Add category</button>
       </fieldset>
 
+      <!-- ── Rooms (hearth) ── -->
+      <fieldset v-if="activeTab === 'rooms'">
+        <legend>Rooms</legend>
+        <label>Intro line<input v-model="c.rooms.intro" placeholder="Stay in one of our…" /></label>
+        <div v-for="(r, i) in c.rooms.items" :key="i" class="testimonial-row">
+          <div class="row-2">
+            <input v-model="r.name" placeholder="Room name (e.g. Mountain Suite)" />
+            <input v-model="r.rate" placeholder="Rate (e.g. $180 / night)" />
+          </div>
+          <input v-model="r.capacity" placeholder="Capacity (e.g. Sleeps 2)" />
+          <textarea v-model="r.description" rows="2" placeholder="Short description…" />
+          <div class="list-row">
+            <img v-if="r.photo" :src="r.photo" class="photo-thumb" style="max-width:160px" />
+            <label class="file-btn">{{ uploading[`room${i}`] ? 'Uploading…' : 'Upload photo' }}
+              <input type="file" accept="image/*" :disabled="!!uploading[`room${i}`]" @change="onInlineFile(r, `room${i}`, $event, 'photo')" />
+            </label>
+            <input v-model="r.photo" placeholder="or paste URL" class="flex-1" />
+          </div>
+          <button type="button" class="btn-remove" @click="removeRoom(i)">Remove room</button>
+        </div>
+        <button type="button" class="btn-add" @click="addRoom">+ Add room</button>
+      </fieldset>
+
+      <!-- ── Services (keystone) ── -->
+      <fieldset v-if="activeTab === 'services'">
+        <legend>Services</legend>
+        <label>Intro line<input v-model="c.services.intro" placeholder="What we offer…" /></label>
+        <div v-for="(s, i) in c.services.items" :key="i" class="testimonial-row">
+          <div class="row-2">
+            <input v-model="s.name" placeholder="Service name" />
+            <input v-model="s.price" placeholder="Price (e.g. From $120)" />
+          </div>
+          <input v-model="s.duration" placeholder="Duration (e.g. 60 min)" />
+          <div class="lbl-row" style="align-items:flex-start">
+            <textarea v-model="s.description" rows="2" placeholder="Description…" style="flex:1" />
+            <AiCopyButton :site-id="siteId" :field="`service: ${s.name || 'service'}`" prompt="A short, concrete service description (~30 words)" :context="aiContext" @pick="(v) => s.description = v" />
+          </div>
+          <button type="button" class="btn-remove" @click="removeService(i)">Remove service</button>
+        </div>
+        <button type="button" class="btn-add" @click="addService">+ Add service</button>
+      </fieldset>
+
+      <!-- ── Products (vault) ── -->
+      <fieldset v-if="activeTab === 'products'">
+        <legend>Products</legend>
+        <label>Intro line<input v-model="c.products.intro" placeholder="Featured pieces…" /></label>
+        <div v-for="(p, i) in c.products.items" :key="i" class="testimonial-row">
+          <div class="row-2">
+            <input v-model="p.name" placeholder="Product name" />
+            <input v-model="p.price" placeholder="Price" />
+          </div>
+          <input v-model="p.href" placeholder="Link / Shopify URL (optional)" />
+          <textarea v-model="p.description" rows="2" placeholder="Description…" />
+          <div class="list-row">
+            <img v-if="p.photo" :src="p.photo" class="photo-thumb" style="max-width:160px" />
+            <label class="file-btn">{{ uploading[`prod${i}`] ? 'Uploading…' : 'Upload photo' }}
+              <input type="file" accept="image/*" :disabled="!!uploading[`prod${i}`]" @change="onInlineFile(p, `prod${i}`, $event, 'photo')" />
+            </label>
+            <input v-model="p.photo" placeholder="or paste URL" class="flex-1" />
+          </div>
+          <button type="button" class="btn-remove" @click="removeProduct(i)">Remove product</button>
+        </div>
+        <button type="button" class="btn-add" @click="addProduct">+ Add product</button>
+      </fieldset>
+
+      <!-- ── Mission (project) ── -->
+      <fieldset v-if="activeTab === 'mission'">
+        <legend>Mission</legend>
+        <label>
+          <span class="lbl-row">Mission statement
+            <AiCopyButton :site-id="siteId" field="mission statement" prompt="A 1-2 sentence mission statement under 40 words" :context="aiContext" @pick="(v) => c.mission.statement = v" />
+          </span>
+          <textarea v-model="c.mission.statement" rows="3" />
+        </label>
+        <p class="section-sub">Pillars</p>
+        <div v-for="(pi, i) in c.mission.pillars" :key="i" class="testimonial-row">
+          <input v-model="pi.title" placeholder="Pillar title" />
+          <div class="lbl-row" style="align-items:flex-start">
+            <textarea v-model="pi.body" rows="2" placeholder="Body text…" style="flex:1" />
+            <AiCopyButton :site-id="siteId" :field="`pillar: ${pi.title || 'pillar'}`" prompt="A short pillar description (~25 words)" :context="aiContext" @pick="(v) => pi.body = v" />
+          </div>
+          <button type="button" class="btn-remove" @click="removePillar(i)">Remove pillar</button>
+        </div>
+        <button type="button" class="btn-add" @click="addPillar">+ Add pillar</button>
+      </fieldset>
+
       <!-- ── Testimonials ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'testimonials'">
         <legend>Testimonials</legend>
         <div v-for="(t, i) in c.testimonials" :key="i" class="testimonial-row">
           <textarea v-model="t.quote" rows="2" placeholder="Quote…" />
@@ -303,7 +483,7 @@ watch(siteId, loadDraft)
       </fieldset>
 
       <!-- ── Social ── -->
-      <fieldset>
+      <fieldset v-if="activeTab === 'social'">
         <legend>Social links</legend>
         <div v-for="(s, i) in c.social" :key="i" class="list-row">
           <input v-model="s.label" placeholder="Label (Instagram, Facebook…)" class="flex-1" />
@@ -342,6 +522,36 @@ watch(siteId, loadDraft)
 
 /* Body */
 .cv-body { display: flex; flex-direction: column; gap: 1.5rem; }
+
+/* Tabs */
+.cv-tabs {
+  display: flex; flex-wrap: wrap; gap: 0.25rem;
+  border-bottom: 1px solid var(--adm-border);
+  margin-bottom: 0.25rem;
+}
+.cv-tab {
+  padding: 0.5rem 0.95rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--adm-text-muted);
+  font: inherit; font-size: 0.82rem; font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.cv-tab:hover { color: var(--adm-accent); background: transparent; border-color: transparent; }
+.cv-tab--active {
+  color: var(--adm-text);
+  background: var(--adm-surface);
+  border-color: var(--adm-border);
+  border-bottom-color: var(--adm-surface);
+}
+
+/* Label with inline AI button */
+.lbl-row { display: inline-flex; align-items: center; gap: 0.5rem; }
 
 /* Fieldsets */
 fieldset {
