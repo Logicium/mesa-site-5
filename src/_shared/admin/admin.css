@@ -216,15 +216,15 @@
 .adm-empty {
   text-align: center;
   padding: 4rem 1.5rem;
-  border: 1px dashed var(--adm-border-strong);
+  border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-lg);
-  background: linear-gradient(180deg, var(--adm-surface) 0%, rgba(20,22,26,0.4) 100%);
+  background: var(--adm-surface);
 }
 .adm-empty__icon {
   width: 56px; height: 56px; margin: 0 auto 1rem;
   border-radius: 50%; display: grid; place-items: center;
-  background: var(--adm-surface-2); border: 1px solid var(--adm-border-strong);
-  color: var(--adm-accent);
+  background: var(--adm-surface-2); border: 1px solid var(--adm-border);
+  color: var(--adm-text-subtle);
 }
 .adm-empty__title {
   font-family: var(--adm-font-serif); font-size: 1.5rem; font-weight: 500;
