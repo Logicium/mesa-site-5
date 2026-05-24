@@ -1,0 +1,249 @@
+/* ─────────────────────────────────────────────────────────────
+   Apotome Admin — shared design system
+   High-end editorial palette + reusable building blocks.
+   Imported once at the top of AdminLayout.vue.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Site theme bridge ───────────────────────────────────────
+     The admin inherits whatever swatch + theme the site is using.
+     Each token below FALLS BACK to a dark editorial default so the
+     admin still looks high-end on the login screen (before a site is
+     selected) and on the very first paint.
+  */
+
+  /* Surfaces */
+  --adm-bg:        var(--ap-surface, #0a0b0d);
+  --adm-surface:   var(--ap-surface-alt, #14161a);
+  --adm-surface-2: color-mix(in srgb, var(--ap-surface-alt, #1d2026) 88%, var(--ap-ink, #ffffff) 6%);
+  --adm-surface-3: color-mix(in srgb, var(--ap-surface-alt, #262a32) 78%, var(--ap-ink, #ffffff) 10%);
+  --adm-overlay:   color-mix(in srgb, var(--ap-surface, #0a0b0d) 78%, transparent);
+
+  /* Borders & dividers */
+  --adm-border:        var(--ap-line, #262a32);
+  --adm-border-strong: color-mix(in srgb, var(--ap-line, #3a3f48) 60%, var(--ap-ink, #ffffff) 12%);
+  --adm-border-soft:   color-mix(in srgb, var(--ap-line, #1c1f25) 75%, transparent);
+
+  /* Text */
+  --adm-text:        var(--ap-ink, #f4f5f7);
+  --adm-text-muted:  var(--ap-ink-muted, #a5acba);
+  --adm-text-subtle: color-mix(in srgb, var(--ap-ink-muted, #6b717e) 65%, transparent);
+  --adm-on-accent:   var(--ap-on-primary, #0f1014);
+
+  /* Brand accent — follows the site primary, falls back to brass/champagne. */
+  --adm-accent:        var(--ap-primary, #c4a47c);
+  --adm-accent-soft:   color-mix(in srgb, var(--ap-primary, #d4b890) 78%, #ffffff 22%);
+  --adm-accent-deep:   color-mix(in srgb, var(--ap-primary, #9a7d57) 78%, #000000 22%);
+  --adm-accent-glow:   color-mix(in srgb, var(--ap-primary, #c4a47c) 18%, transparent);
+
+  /* Status (kept independent so warning/error states are always recognizable) */
+  --adm-success: #6fcf97;
+  --adm-warn:    #f0b56b;
+  --adm-danger:  #f07a7a;
+  --adm-info:    #7aa2f7;
+
+  /* Radii / shadows — inherit site shape so admin matches site personality */
+  --adm-radius-sm: 4px;
+  --adm-radius:    var(--ap-radius, 8px);
+  --adm-radius-lg: var(--ap-radius-lg, 14px);
+  --adm-shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --adm-shadow:    var(--ap-shadow, 0 4px 16px rgba(0,0,0,0.5));
+  --adm-shadow-lg: var(--ap-shadow-lg, 0 18px 48px rgba(0,0,0,0.6));
+
+  /* Type — admin headings use the site's heading font so the
+     dashboard reads as part of the same brand. */
+  --adm-font-serif: var(--ap-font-heading, "Cormorant Garamond", "Georgia", "Times New Roman", serif);
+  --adm-font-sans:  var(--ap-font-body, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif);
+  --adm-font-mono:  var(--ap-font-mono, ui-monospace, "JetBrains Mono", Menlo, monospace);
+  --adm-heading-tracking: var(--ap-tracking-heading, -0.01em);
+  --adm-heading-transform: var(--ap-heading-transform, none);
+  --adm-heading-weight: var(--ap-heading-weight, 500);
+}
+
+/* ── Layout primitives ─────────────────────────────────────── */
+
+.adm-page {
+  display: flex; flex-direction: column; gap: 2rem;
+}
+.adm-page__head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 1.5rem; flex-wrap: wrap;
+  padding: 1.25rem 0 1.5rem;
+  border-bottom: 1px solid var(--adm-border-soft);
+  position: relative;
+}
+.adm-page__head::after {
+  /* A whisper of brand accent under the title — editorial rule. */
+  content: "";
+  position: absolute; left: 0; bottom: -1px;
+  width: 64px; height: 2px;
+  background: var(--adm-accent);
+  border-radius: 2px;
+}
+.adm-page__title-block { display: flex; flex-direction: column; gap: 0.6rem; max-width: 70ch; }
+.adm-eyebrow {
+  text-transform: uppercase; letter-spacing: 0.22em; font-size: 0.78rem;
+  color: var(--adm-accent); font-weight: 600;
+}
+.adm-title {
+  font-family: var(--adm-font-serif);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: var(--adm-heading-weight);
+  letter-spacing: var(--adm-heading-tracking);
+  text-transform: var(--adm-heading-transform);
+  color: var(--adm-text); margin: 0; line-height: 1.02;
+}
+.adm-subtitle {
+  color: var(--adm-text-muted); font-size: 1.05rem;
+  font-family: var(--adm-font-sans);
+  max-width: 60ch; margin: 0.25rem 0 0; line-height: 1.5;
+}
+.adm-page__actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+
+/* ── Cards ─────────────────────────────────────────────────── */
+
+.adm-card {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  padding: 1.25rem 1.4rem;
+  box-shadow: var(--adm-shadow);
+}
+.adm-card--inset { background: var(--adm-surface-2); }
+.adm-card__title {
+  font-family: var(--adm-font-serif); font-size: 1.65rem; font-weight: var(--adm-heading-weight);
+  margin: 0 0 0.3rem;
+  letter-spacing: var(--adm-heading-tracking);
+  text-transform: var(--adm-heading-transform);
+  line-height: 1.15;
+}
+.adm-card__sub { color: var(--adm-text-muted); font-size: 0.9rem; margin: 0 0 1rem; }
+
+/* ── Buttons ───────────────────────────────────────────────── */
+
+.adm-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--adm-surface-2);
+  color: var(--adm-text);
+  border: 1px solid var(--adm-border-strong);
+  border-radius: var(--adm-radius);
+  font: inherit; font-size: 0.875rem; font-weight: 500;
+  cursor: pointer; line-height: 1;
+  transition: background 140ms, border-color 140ms, color 140ms, transform 80ms;
+}
+.adm-btn:hover { background: var(--adm-surface-3); border-color: var(--adm-accent-deep); }
+.adm-btn:active { transform: translateY(1px); }
+.adm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.adm-btn--primary {
+  background: var(--adm-accent); color: var(--adm-on-accent);
+  border-color: var(--adm-accent);
+}
+.adm-btn--primary:hover {
+  background: var(--adm-accent-soft); border-color: var(--adm-accent-soft);
+}
+
+.adm-btn--ghost { background: transparent; border-color: transparent; color: var(--adm-text-muted); }
+.adm-btn--ghost:hover { background: var(--adm-surface-2); color: var(--adm-text); border-color: var(--adm-border); }
+
+.adm-btn--danger { color: var(--adm-danger); border-color: rgba(240,122,122,0.35); background: transparent; }
+.adm-btn--danger:hover { background: rgba(240,122,122,0.08); border-color: var(--adm-danger); }
+
+.adm-btn--sm { padding: 0.32rem 0.65rem; font-size: 0.78rem; }
+
+/* ── Inputs ────────────────────────────────────────────────── */
+
+.adm-input, .adm-select, .adm-textarea {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  background: var(--adm-surface-2);
+  color: var(--adm-text);
+  border: 1px solid var(--adm-border-strong);
+  border-radius: var(--adm-radius);
+  font: inherit; font-size: 0.9rem;
+  transition: border-color 140ms, box-shadow 140ms;
+}
+.adm-input::placeholder, .adm-textarea::placeholder { color: var(--adm-text-subtle); }
+.adm-input:focus, .adm-select:focus, .adm-textarea:focus {
+  outline: none;
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 3px var(--adm-accent-glow);
+}
+.adm-textarea { resize: vertical; min-height: 5.5rem; }
+
+.adm-label {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  font-size: 0.78rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--adm-text-muted);
+}
+
+/* ── Badges / pills ───────────────────────────────────────── */
+
+.adm-badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border-strong);
+  background: var(--adm-surface-2); color: var(--adm-text-muted);
+}
+.adm-badge--live    { color: var(--adm-success); border-color: rgba(111,207,151,0.4); background: rgba(111,207,151,0.08); }
+.adm-badge--pending { color: var(--adm-warn);    border-color: rgba(240,181,107,0.4); background: rgba(240,181,107,0.08); }
+.adm-badge--failed  { color: var(--adm-danger);  border-color: rgba(240,122,122,0.4); background: rgba(240,122,122,0.08); }
+.adm-badge--info    { color: var(--adm-info);    border-color: rgba(122,162,247,0.4); background: rgba(122,162,247,0.08); }
+
+/* ── Tables ────────────────────────────────────────────────── */
+
+.adm-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.adm-table th, .adm-table td {
+  padding: 0.7rem 0.85rem; text-align: left; vertical-align: middle;
+  border-bottom: 1px solid var(--adm-border-soft);
+  color: var(--adm-text);
+}
+.adm-table thead th {
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--adm-text-subtle);
+  border-bottom: 1px solid var(--adm-border);
+}
+.adm-table tbody tr:hover td { background: rgba(255,255,255,0.015); }
+
+/* ── Empty state ──────────────────────────────────────────── */
+
+.adm-empty {
+  text-align: center;
+  padding: 4rem 1.5rem;
+  border: 1px dashed var(--adm-border-strong);
+  border-radius: var(--adm-radius-lg);
+  background: linear-gradient(180deg, var(--adm-surface) 0%, rgba(20,22,26,0.4) 100%);
+}
+.adm-empty__icon {
+  width: 56px; height: 56px; margin: 0 auto 1rem;
+  border-radius: 50%; display: grid; place-items: center;
+  background: var(--adm-surface-2); border: 1px solid var(--adm-border-strong);
+  color: var(--adm-accent);
+}
+.adm-empty__title {
+  font-family: var(--adm-font-serif); font-size: 1.5rem; font-weight: 500;
+  margin: 0 0 0.4rem;
+}
+.adm-empty__body { color: var(--adm-text-muted); max-width: 44ch; margin: 0 auto 1.25rem; }
+
+/* ── Status helpers ───────────────────────────────────────── */
+
+.adm-msg-ok    { color: var(--adm-success); font-size: 0.85rem; }
+.adm-msg-warn  { color: var(--adm-warn);    font-size: 0.85rem; }
+.adm-msg-err   { color: var(--adm-danger);  font-size: 0.85rem; }
+.adm-muted     { color: var(--adm-text-muted); }
+.adm-subtle    { color: var(--adm-text-subtle); }
+
+/* ── Links ────────────────────────────────────────────────── */
+
+.adm-link {
+  color: var(--adm-accent-soft); text-decoration: none;
+  border-bottom: 1px solid transparent; transition: border-color 140ms;
+}
+.adm-link:hover { border-bottom-color: var(--adm-accent-soft); }

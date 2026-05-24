@@ -1,0 +1,38 @@
+{
+  "_note": "This file is overwritten by the Apotome provisioning service during site generation. Edit your live content from /admin.",
+  "archetype": "mesa",
+  "brand": "The Mesa Restaurant",
+  "tagline": "Fresh, Local, Unforgettable",
+  "blurb": "A warm gathering place where every dish tells a story.",
+  "theme": "earth",
+  "swatch": "default",
+  "variant": "classic",
+  "contact": {
+    "address": "123 Main St, Trinidad, CO 81082",
+    "phone": "(719) 555-0100",
+    "email": "hello@example.com",
+    "mapEmbedUrl": ""
+  },
+  "hours": [
+    { "day": "Mon–Thu", "open": "11am – 9pm" },
+    { "day": "Fri–Sat", "open": "11am – 10pm" },
+    { "day": "Sunday", "open": "Closed" }
+  ],
+  "photos": {
+    "hero": { "src": "/images/hero.jpg", "alt": "Restaurant interior" },
+    "about": { "src": "/images/about.jpg", "alt": "Chef at work" },
+    "gallery": []
+  },
+  "story": {
+    "title": "Our Story",
+    "paragraphs": ["A neighborhood restaurant with roots in the community."],
+    "facts": []
+  },
+  "menu": {
+    "intro": "",
+    "categories": [],
+    "fullMenuUrl": ""
+  },
+  "testimonials": [],
+  "social": []
+}
