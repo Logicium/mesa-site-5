@@ -21,6 +21,25 @@ function deepMerge<T>(base: T, override: unknown): T {
   return out as T
 }
 
+/**
+ * Apply `source` into `target` in place, recursing into nested objects so
+ * Vue's reactivity sees each leaf assignment. Replaces arrays and primitives
+ * outright; merges plain-object branches. Used by templates to push the
+ * hydrated server overlay into the reactive build-time siteConfig so live
+ * pages re-render without component changes.
+ */
+export function applyDeep(target: Record<string, unknown>, source: unknown): void {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return
+  for (const [k, v] of Object.entries(source as Record<string, unknown>)) {
+    const cur = target[k]
+    if (v && typeof v === 'object' && !Array.isArray(v) && cur && typeof cur === 'object' && !Array.isArray(cur)) {
+      applyDeep(cur as Record<string, unknown>, v)
+    } else {
+      target[k] = v
+    }
+  }
+}
+
 export const useSiteContentStore = defineStore('siteContent', () => {
   const config = ref<unknown>(null)
   const hydrated = ref(false)
