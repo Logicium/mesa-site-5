@@ -38,7 +38,9 @@ export interface MesaSiteConfig {
  * Demo configuration. To deploy for a customer, change values here only.
  * Switch `theme` / `swatch` / `variant` to instantly re-skin the site.
  */
-export const siteConfig: MesaSiteConfig = {
+import { reactive } from 'vue'
+
+export const siteConfig: MesaSiteConfig = reactive(({
   brand: 'Mesa Trinidad',
   tagline: 'Wood-fired kitchen',
   blurb: 'A neighborhood kitchen serving Southern Colorado classics with a wood-fired heart.',
@@ -118,4 +120,4 @@ export const siteConfig: MesaSiteConfig = {
     { label: 'Instagram', href: 'https://instagram.com' },
     { label: 'Facebook', href: 'https://facebook.com' },
   ],
-}
+}))
