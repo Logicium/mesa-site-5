@@ -9,7 +9,7 @@ import { contentClient } from './contentClient'
 
 const STORAGE_KEY = 'admin.activeSiteId'
 
-export type AdminSiteRow = Awaited<ReturnType<typeof contentClient.listSites>>[number]
+export type AdminSiteRow = Awaited<ReturnType<typeof contentClient.listSites>>[number] & { archetype: string }
 
 export const useActiveSiteStore = defineStore('activeSite', () => {
   const sites = ref<AdminSiteRow[]>([])
