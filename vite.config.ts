@@ -19,11 +19,6 @@ export default defineConfig({
   ],
   // Read .env.local from the monorepo root so all templates share one file.
   envDir: '..',
-  // VITE_SITE_SLUG identifies this template to archetype-service. It is a
-  // static identity so it lives here rather than in an env file.
-  define: {
-    'import.meta.env.VITE_SITE_SLUG': JSON.stringify('mesa'),
-  },
   resolve: { alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@apotome/archetype-shared/': fileURLToPath(new URL('./src/_shared/', import.meta.url)),
