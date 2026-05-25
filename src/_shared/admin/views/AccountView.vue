@@ -160,6 +160,31 @@ async function doLogout() {
             </label>
           </div>
         </div>
+
+        <div class="adm-card">
+          <h3 class="adm-card__title">Support</h3>
+          <p class="adm-card__sub">Need help? We're here.</p>
+          <ul class="acct-support">
+            <li>
+              <span class="acct-support__label">Email us</span>
+              <a href="mailto:kisora@apotomelabs.com" class="acct-support__link">kisora@apotomelabs.com</a>
+            </li>
+            <li>
+              <span class="acct-support__label">Report a bug</span>
+              <a
+                href="mailto:kisora@apotomelabs.com?subject=Bug%20Report&body=Describe%20the%20bug%20and%20steps%20to%20reproduce%3A"
+                class="acct-support__link"
+              >Submit a bug report</a>
+            </li>
+            <li>
+              <span class="acct-support__label">Request a feature</span>
+              <a
+                href="mailto:kisora@apotomelabs.com?subject=Feature%20Request&body=Describe%20the%20feature%20you%27d%20like%3A"
+                class="acct-support__link"
+              >Submit a feature request</a>
+            </li>
+          </ul>
+        </div>
       </div>
     </template>
   </section>
@@ -186,4 +211,25 @@ async function doLogout() {
 .acct-radios { display: flex; flex-direction: column; gap: 0.5rem; }
 .acct-radio { display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; font-size: 0.88rem; }
 .acct-radio input { margin-top: 0.15rem; }
+.acct-support {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 0;
+}
+.acct-support li {
+  display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--adm-border);
+}
+.acct-support li:last-child { border-bottom: 0; padding-bottom: 0; }
+.acct-support__label {
+  font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--adm-text-subtle);
+}
+.acct-support__link {
+  font-size: 0.9rem;
+  color: var(--adm-accent);
+  text-decoration: none;
+}
+.acct-support__link:hover { text-decoration: underline; }
 </style>
