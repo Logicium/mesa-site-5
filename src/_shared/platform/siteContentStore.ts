@@ -50,6 +50,11 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   const googleReviews = ref<Array<{ quote: string; author: string; source?: string; rating?: number }>>([])
   const googleReviewsLoaded = ref(false)
 
+  // Cached id of the site whose slug matches PLATFORM_SITE_KEY — needed to call
+  // the owner-scoped admin endpoints from the public site.
+  const ownedSiteId = ref<string | null>(null)
+  let ownedSiteLookup: Promise<string | null> | null = null
+
   const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SITE_KEY)
 
   /** 'manual' (hand-written testimonials) or 'google' (live reviews). */
@@ -97,9 +102,54 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     if (s === 'google') void loadGoogleReviews()
   }, { immediate: true })
 
+  /**
+   * Look up the site row whose slug matches PLATFORM_SITE_KEY. Used by the
+   * public-site ThemeSwitcher to publish theme changes back to the owner's
+   * site without needing the admin layout / activeSiteStore.
+   */
+  async function resolveOwnedSiteId(): Promise<string | null> {
+    if (ownedSiteId.value) return ownedSiteId.value
+    if (!isPlatform.value) return null
+    if (!ownedSiteLookup) {
+      ownedSiteLookup = contentClient.listSites()
+        .then(sites => {
+          const match = sites.find(s => s.slug === PLATFORM_SITE_KEY)
+          ownedSiteId.value = match?.id ?? null
+          return ownedSiteId.value
+        })
+        .catch(() => null)
+    }
+    return ownedSiteLookup
+  }
+
+  /**
+   * Merge `patch` (typically theme / style fields) into the current draft and
+   * publish. Used by the live ThemeSwitcher so an owner's tweaks become the
+   * public site's defaults for everyone else. Silently no-ops for non-owners
+   * or when the lookup fails — the worst case is a localStorage-only change.
+   */
+  async function saveThemePatch(patch: Record<string, unknown>): Promise<void> {
+    const id = await resolveOwnedSiteId()
+    if (!id) return
+    const draft = await contentClient.getDraft(id).catch(() => null)
+    const base = (draft?.payload ?? {}) as Record<string, unknown>
+    const merged: Record<string, unknown> = { ...base }
+    for (const [k, v] of Object.entries(patch)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)
+          && base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) {
+        merged[k] = { ...(base[k] as Record<string, unknown>), ...(v as Record<string, unknown>) }
+      } else {
+        merged[k] = v
+      }
+    }
+    await contentClient.publish(id, merged)
+  }
+
   return {
     config, hydrated, hydrating, error, isPlatform,
     reviewsSource, googleReviews,
+    ownedSiteId,
     hydrate, setBuildTimeConfig, loadGoogleReviews,
+    resolveOwnedSiteId, saveThemePatch,
   }
 })
