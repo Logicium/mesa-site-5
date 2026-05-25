@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // ─── Types ───────────────────────────────────────────────────────────────────
-import { computed, onMounted, ref, watch, reactive } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, reactive } from 'vue'
 import { contentClient } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
 import { tabsForArchetype, type TabId } from '../contentSchemas'
 import AiCopyButton from '../components/AiCopyButton.vue'
+import MapSearchPicker from '../components/MapSearchPicker.vue'
+import { useToast } from '../composables/useToast'
 
 interface PhotoSlot { src: string; alt?: string; caption?: string }
 interface MenuItem { name: string; description?: string; price: string; tags?: string[] }
@@ -36,6 +38,7 @@ interface SiteContent {
   // project
   mission: { statement: string; pillars: PillarItem[] }
   testimonials: Testimonial[]
+  reviewsSource: 'manual' | 'google'
   social: SocialLink[]
 }
 
@@ -52,6 +55,7 @@ function blankContent(): SiteContent {
     products: { intro: '', items: [] },
     mission:  { statement: '', pillars: [] },
     testimonials: [],
+    reviewsSource: 'manual',
     social: [],
   }
 }
@@ -67,10 +71,80 @@ watch(tabs, (next) => {
 
 const version = ref(0)
 const published = ref(false)
-const statusMsg = ref<string>('')
-const error = ref<string | null>(null)
 const uploading = ref<Record<string, boolean>>({})
 const c = reactive<SiteContent>(blankContent())
+const toast = useToast()
+
+// ─── Version history dropdown state ──────────────────────────────────────────
+const historyOpen = ref(false)
+const historyLoading = ref(false)
+interface VersionRow {
+  version: number
+  published: boolean
+  publishedAt?: string
+  createdAt: string
+  changes?: { paths: string[]; count: number }
+}
+const historyItems = ref<VersionRow[]>([])
+const restoringVersion = ref<number | null>(null)
+const historyAnchor = ref<HTMLElement | null>(null)
+
+function toggleHistory() {
+  if (historyOpen.value) { historyOpen.value = false; return }
+  void openHistory()
+}
+
+async function openHistory() {
+  if (!siteId.value) return
+  historyOpen.value = true
+  historyLoading.value = true
+  try {
+    historyItems.value = await contentClient.listVersions(siteId.value)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function onDocClick(e: MouseEvent) {
+  if (!historyOpen.value) return
+  const t = e.target as Node | null
+  if (t && historyAnchor.value && !historyAnchor.value.contains(t)) historyOpen.value = false
+}
+function onDocKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') historyOpen.value = false
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onDocClick)
+  document.addEventListener('keydown', onDocKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocClick)
+  document.removeEventListener('keydown', onDocKey)
+})
+
+async function restoreVersion(v: number) {
+  if (!siteId.value) return
+  if (!window.confirm(`Restore version ${v}? This publishes a new version with that content.`)) return
+  restoringVersion.value = v
+  try {
+    const r = await contentClient.restoreVersion(siteId.value, v)
+    toast.success(`Restored as v${r.version}`)
+    historyOpen.value = false
+    await loadDraft()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    restoringVersion.value = null
+  }
+}
+
+function formatStamp(s?: string): string {
+  if (!s) return ''
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleString()
+}
 
 /** Minimal context the AI prompt can reference. */
 const aiContext = computed(() => ({
@@ -96,50 +170,83 @@ function applyPayload(raw: Record<string, unknown>) {
   if (p.products !== undefined) Object.assign(c.products, p.products)
   if (p.mission  !== undefined) Object.assign(c.mission,  p.mission)
   if (p.testimonials !== undefined) { c.testimonials.length = 0; c.testimonials.push(...(p.testimonials as Testimonial[])) }
+  if (p.reviewsSource !== undefined) c.reviewsSource = (p.reviewsSource === 'google' ? 'google' : 'manual')
   if (p.social   !== undefined) { c.social.length = 0; c.social.push(...(p.social as SocialLink[])) }
 }
 
 async function loadDraft() {
   if (!siteId.value) return
-  error.value = null
   try {
     const d = await contentClient.getDraft(siteId.value)
     version.value = d.version; published.value = d.published
     applyPayload(d.payload)
-  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+  } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
 }
 
 async function save(publish = false) {
-  error.value = null; statusMsg.value = ''
   try {
     const payload = JSON.parse(JSON.stringify(c)) as Record<string, unknown>
     if (publish) {
       const r = await contentClient.publish(siteId.value, payload)
-      statusMsg.value = `Published v${r.version}`; published.value = true
+      version.value = r.version; published.value = true
+      toast.success(`Published v${r.version}`)
     } else {
       const r = await contentClient.saveDraft(siteId.value, payload)
-      version.value = r.version; statusMsg.value = 'Draft saved'
+      version.value = r.version; published.value = false
+      toast.success(`Draft saved · v${r.version}`)
     }
-  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+  } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
 }
 
 // ─── Image upload ─────────────────────────────────────────────────────────────
-function readFile(file: File): Promise<string> {
+// Re-encode photos as lossless WebP before upload. Quality 1.0 keeps every
+// pixel of the source intact while still benefiting from WebP's better
+// compression vs. JPEG/PNG.
+const WEBP_QUALITY = 1.0
+
+function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
     const fr = new FileReader()
-    fr.onload = () => res(((fr.result as string).split(',')[1]) ?? '')
+    fr.onload = () => res(fr.result as string)
     fr.onerror = rej
     fr.readAsDataURL(file)
   })
 }
 
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
+    const img = new Image()
+    img.onload = () => res(img)
+    img.onerror = rej
+    img.src = dataUrl
+  })
+}
+
+/** Re-encode the file as WebP at WEBP_QUALITY. SVGs/GIFs/already-WebP files
+ *  are passed through untouched. Returns base64 + new contentType + filename. */
+async function prepareImage(file: File): Promise<{ base64: string; contentType: string; filename: string }> {
+  if (/^image\/(svg|gif|webp)/.test(file.type)) {
+    const dataUrl = await readAsDataUrl(file)
+    return { base64: dataUrl.split(',')[1] ?? '', contentType: file.type, filename: file.name }
+  }
+  const img = await loadImage(await readAsDataUrl(file))
+  const canvas = document.createElement('canvas')
+  canvas.width = img.naturalWidth
+  canvas.height = img.naturalHeight
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0)
+  const dataUrl = canvas.toDataURL('image/webp', WEBP_QUALITY)
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'image'
+  return { base64: dataUrl.split(',')[1] ?? '', contentType: 'image/webp', filename: `${baseName}.webp` }
+}
+
 async function uploadImage(slot: PhotoSlot, key: string, file: File) {
-  uploading.value[key] = true; error.value = null
+  uploading.value[key] = true
   try {
-    const base64 = await readFile(file)
-    const r = await contentClient.uploadMedia(siteId.value, file.name, file.type, base64)
+    const { base64, contentType, filename } = await prepareImage(file)
+    const r = await contentClient.uploadMedia(siteId.value, filename, contentType, base64)
     slot.src = r.url
-  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+  } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
   finally { uploading.value[key] = false }
 }
 
@@ -179,17 +286,41 @@ function addPillar()  { c.mission.pillars.push({ title: '', body: '' }) }
 function removePillar(i: number)  { c.mission.pillars.splice(i, 1) }
 
 async function uploadInline(target: { src?: string; photo?: string }, key: string, file: File, prop: 'src' | 'photo' = 'src') {
-  uploading.value[key] = true; error.value = null
+  uploading.value[key] = true
   try {
-    const base64 = await readFile(file)
-    const r = await contentClient.uploadMedia(siteId.value, file.name, file.type, base64)
+    const { base64, contentType, filename } = await prepareImage(file)
+    const r = await contentClient.uploadMedia(siteId.value, filename, contentType, base64)
     target[prop] = r.url
-  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+  } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
   finally { uploading.value[key] = false }
 }
 function onInlineFile(target: { src?: string; photo?: string }, key: string, evt: Event, prop: 'src' | 'photo' = 'src') {
   const file = (evt.target as HTMLInputElement).files?.[0]
   if (file) uploadInline(target, key, file, prop)
+}
+
+/** Upload a PDF (or any non-image) to blob storage and store the URL on `c.menu.fullMenuUrl`. */
+async function onMenuPdfFile(evt: Event) {
+  const input = evt.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.type !== 'application/pdf') {
+    toast.error('Please choose a PDF file.')
+    input.value = ''
+    return
+  }
+  uploading.value['menuPdf'] = true
+  try {
+    const base64 = (await readAsDataUrl(file)).split(',')[1] ?? ''
+    const r = await contentClient.uploadMedia(siteId.value, file.name, 'application/pdf', base64)
+    c.menu.fullMenuUrl = r.url
+    toast.success('Menu PDF uploaded')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    uploading.value['menuPdf'] = false
+    input.value = ''
+  }
 }
 
 onMounted(async () => {
@@ -204,13 +335,73 @@ watch(siteId, loadDraft)
     <div class="cv-header">
       <h1>Content</h1>
       <div class="cv-header__right">
-        <span v-if="siteId" class="meta">v{{ version }} · {{ published ? 'published' : 'draft' }}</span>
+        <div v-if="siteId" ref="historyAnchor" class="history-wrap">
+          <button
+            type="button"
+            class="version-chip"
+            :title="'View version history'"
+            :aria-expanded="historyOpen"
+            @click="toggleHistory"
+          >v{{ version }} · {{ published ? 'published' : 'draft' }}<span class="version-chip__caret" aria-hidden="true">▾</span></button>
+
+          <div v-if="historyOpen" class="history-dd" role="menu">
+            <header class="history-dd__head">
+              <strong>Version history</strong>
+              <button type="button" class="history-dd__close" @click="historyOpen = false" aria-label="Close">×</button>
+            </header>
+            <p v-if="historyLoading" class="meta">Loading…</p>
+            <p v-else-if="historyItems.length === 0" class="meta">No versions yet.</p>
+            <ul v-else class="version-list">
+              <li
+                v-for="row in historyItems"
+                :key="row.version"
+                class="version-row"
+                :class="{ 'version-row--current': row.version === version }"
+              >
+                <div class="version-row__main">
+                  <span class="version-row__num">v{{ row.version }}</span>
+                  <span
+                    class="version-row__badge"
+                    :class="row.published ? 'badge--pub' : 'badge--draft'"
+                  >{{ row.published ? 'published' : 'draft' }}</span>
+                  <span class="version-row__stamp">
+                    {{ formatStamp(row.publishedAt || row.createdAt) }}
+                  </span>
+                </div>
+                <div
+                  v-if="row.changes && row.changes.paths.length"
+                  class="version-row__changes"
+                  :title="`${row.changes.count} field${row.changes.count === 1 ? '' : 's'} changed`"
+                >
+                  <span
+                    v-for="p in row.changes.paths"
+                    :key="p"
+                    class="change-chip"
+                  >{{ p }}</span>
+                  <span
+                    v-if="row.changes.count > row.changes.paths.length"
+                    class="change-chip change-chip--more"
+                  >+{{ row.changes.count - row.changes.paths.length }} more</span>
+                </div>
+                <div v-else-if="row.changes" class="version-row__changes meta">Initial version</div>
+                <button
+                  type="button"
+                  class="btn-primary version-row__btn"
+                  :disabled="restoringVersion !== null || row.version === version"
+                  @click="restoreVersion(row.version)"
+                >
+                  <template v-if="restoringVersion === row.version">Restoring…</template>
+                  <template v-else-if="row.version === version">Current</template>
+                  <template v-else>Restore</template>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
         <button type="button" @click="save(false)">Save draft</button>
         <button type="button" class="btn-primary" @click="save(true)">Publish</button>
       </div>
     </div>
-    <p v-if="statusMsg" class="ok">{{ statusMsg }}</p>
-    <p v-if="error" class="err">{{ error }}</p>
     <p v-if="!siteId" class="err">Select a site from the header dropdown.</p>
 
     <div v-if="siteId" class="cv-body">
@@ -274,13 +465,17 @@ watch(siteId, loadDraft)
       <fieldset v-if="activeTab === 'contact'">
         <legend>Contact</legend>
         <div class="row-2">
-          <label>Address<input v-model="c.contact.address" /></label>
           <label>Phone<input v-model="c.contact.phone" /></label>
-        </div>
-        <div class="row-2">
           <label>Email<input v-model="c.contact.email" type="email" /></label>
-          <label>Google Maps embed URL<input v-model="c.contact.mapEmbedUrl" placeholder="https://www.google.com/maps?q=…&output=embed" /></label>
         </div>
+        <label>Address &amp; map
+          <MapSearchPicker
+            :address="c.contact.address"
+            :embed-url="c.contact.mapEmbedUrl"
+            @update:address="v => c.contact.address = v"
+            @update:embed-url="v => c.contact.mapEmbedUrl = v"
+          />
+        </label>
       </fieldset>
 
       <!-- ── Hours ── -->
@@ -361,7 +556,24 @@ watch(siteId, loadDraft)
         <legend>Menu</legend>
         <div class="row-2">
           <label>Menu intro line<input v-model="c.menu.intro" placeholder="Updated weekly with…" /></label>
-          <label>Full menu PDF / page URL<input v-model="c.menu.fullMenuUrl" placeholder="https://…" /></label>
+          <label>Full menu PDF
+            <div class="pdf-upload">
+              <input
+                type="file"
+                accept="application/pdf"
+                :disabled="uploading['menuPdf']"
+                @change="onMenuPdfFile"
+              />
+              <a v-if="c.menu.fullMenuUrl" :href="c.menu.fullMenuUrl" target="_blank" rel="noopener" class="pdf-upload__link">View current PDF</a>
+              <button
+                v-if="c.menu.fullMenuUrl"
+                type="button"
+                class="pdf-upload__clear"
+                @click="c.menu.fullMenuUrl = ''"
+              >Remove</button>
+              <span v-if="uploading['menuPdf']" class="meta">Uploading…</span>
+            </div>
+          </label>
         </div>
 
         <div v-for="(cat, ci) in c.menu.categories" :key="ci" class="menu-cat">
@@ -471,6 +683,24 @@ watch(siteId, loadDraft)
       <!-- ── Testimonials ── -->
       <fieldset v-if="activeTab === 'testimonials'">
         <legend>Testimonials</legend>
+        <div class="reviews-source">
+          <label class="reviews-source__label">Show on the public site</label>
+          <div class="reviews-source__choices">
+            <label class="reviews-source__choice">
+              <input type="radio" v-model="c.reviewsSource" value="manual" />
+              <span>Hand-written testimonials</span>
+            </label>
+            <label class="reviews-source__choice">
+              <input type="radio" v-model="c.reviewsSource" value="google" />
+              <span>Live Google reviews</span>
+            </label>
+          </div>
+          <p class="reviews-source__hint">
+            Live reviews pull from the business connected on the
+            <em>Google Reviews</em> page. If none are available, the public
+            site falls back to the hand-written list below.
+          </p>
+        </div>
         <div v-for="(t, i) in c.testimonials" :key="i" class="testimonial-row">
           <textarea v-model="t.quote" rows="2" placeholder="Quote…" />
           <div class="row-2">
@@ -497,8 +727,6 @@ watch(siteId, loadDraft)
       <div class="save-bar">
         <button type="button" @click="save(false)">Save draft</button>
         <button type="button" class="btn-primary" @click="save(true)">Publish</button>
-        <span v-if="statusMsg" class="ok">{{ statusMsg }}</span>
-        <span v-if="error" class="err">{{ error }}</span>
       </div>
 
     </div>
@@ -513,6 +741,92 @@ watch(siteId, loadDraft)
 .cv-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
 .cv-header h1 { margin: 0; font-family: var(--adm-font-serif); font-weight: 500; }
 .cv-header__right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+/* Version chip is a button that opens the history dropdown. */
+.history-wrap { position: relative; display: inline-block; }
+.version-chip {
+  font: inherit; font-size: 0.78rem; letter-spacing: 0.04em;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--adm-surface-2); color: var(--adm-text-muted);
+  border: 1px solid var(--adm-border); border-radius: 999px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.version-chip:hover {
+  color: var(--adm-text);
+  border-color: var(--adm-accent);
+  background: var(--adm-surface-3);
+}
+.version-chip__caret { font-size: 0.65rem; opacity: 0.7; }
+.version-chip[aria-expanded="true"] { color: var(--adm-text); border-color: var(--adm-accent); }
+
+/* Custom dropdown anchored under the version chip. */
+.history-dd {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: min(440px, calc(100vw - 2rem));
+  max-height: min(70vh, 560px);
+  display: flex; flex-direction: column;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius, 10px);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+  overflow: hidden;
+}
+.history-dd__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--adm-border);
+  font-family: var(--adm-font-serif);
+}
+.history-dd__close {
+  background: transparent; border: 0; color: var(--adm-text-muted);
+  font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0 0.25rem;
+}
+.history-dd__close:hover { color: var(--adm-text); }
+.history-dd .meta { padding: 0.85rem; margin: 0; }
+
+/* Version history list */
+.version-list { list-style: none; padding: 0.5rem; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; overflow: auto; }
+.version-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius, 8px);
+}
+.version-row--current { border-color: var(--adm-accent); }
+.version-row__main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.version-row__num { font-weight: 600; }
+.version-row__badge {
+  font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.1rem 0.4rem; border-radius: 999px;
+}
+.badge--pub   { background: color-mix(in srgb, var(--adm-accent) 22%, transparent); color: var(--adm-accent-soft, var(--adm-accent)); }
+.badge--draft { background: var(--adm-surface-3); color: var(--adm-text-muted); }
+.version-row__stamp { font-size: 0.78rem; color: var(--adm-text-muted); }
+.version-row__btn { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.version-row__btn:disabled { opacity: 0.55; cursor: default; }
+.version-row__changes {
+  grid-column: 1;
+  display: flex; flex-wrap: wrap; gap: 0.25rem;
+  font-size: 0.72rem;
+}
+.change-chip {
+  font-family: var(--adm-font-mono, ui-monospace, monospace);
+  padding: 0.1rem 0.4rem;
+  background: var(--adm-surface-3);
+  border: 1px solid var(--adm-border);
+  border-radius: 4px;
+  color: var(--adm-text-muted);
+}
+.change-chip--more { background: transparent; border-style: dashed; }
 .cv-site-select select {
   padding: 0.35rem 0.6rem;
   background: var(--adm-surface-2); color: var(--adm-text);
@@ -673,6 +987,20 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 .file-btn input[type="file"] { display: none; }
 
 /* Menu */
+.pdf-upload {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+.pdf-upload input[type="file"] { width: auto; margin: 0; }
+.pdf-upload__link {
+  font-size: 0.8rem; color: var(--adm-accent); text-decoration: underline;
+}
+.pdf-upload__clear {
+  background: transparent; border: 1px solid var(--adm-border);
+  color: var(--adm-text-muted); font-size: 0.75rem; padding: 0.2rem 0.55rem;
+  border-radius: 999px; cursor: pointer;
+}
+.pdf-upload__clear:hover { border-color: var(--adm-danger); color: var(--adm-danger); }
 .menu-cat {
   background: var(--adm-surface-3);
   border: 1px solid var(--adm-border-soft);
@@ -684,6 +1012,28 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 .menu-item input { margin-top: 0; }
 
 /* Testimonials */
+.reviews-source {
+  background: var(--adm-surface-3);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-radius, 10px);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+.reviews-source__label {
+  display: block; font-weight: 600; font-size: 0.85rem;
+  color: var(--adm-text-muted); text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 0.5rem;
+}
+.reviews-source__choices { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.reviews-source__choice {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-size: 0.92rem; cursor: pointer;
+}
+.reviews-source__choice input { width: auto; margin: 0; }
+.reviews-source__hint {
+  margin: 0.65rem 0 0; color: var(--adm-text-muted);
+  font-size: 0.8rem; line-height: 1.4;
+}
 .testimonial-row {
   padding: 0.85rem;
   background: var(--adm-surface-3);
