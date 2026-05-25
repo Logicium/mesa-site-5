@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { siteConfig } from '../config/site.config'
 import { VARIANT_PHOTO_COUNT } from '@apotome/archetype-shared/themes/tokens'
+import { useSiteContentStore } from '@apotome/archetype-shared/platform/siteContentStore'
 import HeroSection from '@apotome/archetype-shared/components/sections/HeroSection.vue'
 import AboutSection from '@apotome/archetype-shared/components/sections/AboutSection.vue'
 import GallerySection from '@apotome/archetype-shared/components/sections/GallerySection.vue'
@@ -11,6 +12,12 @@ import TestimonialsSection from '@apotome/archetype-shared/components/sections/T
 
 const galleryLimit = computed(() => VARIANT_PHOTO_COUNT[siteConfig.variant].gallery)
 const isPortfolio = computed(() => siteConfig.variant === 'portfolio')
+const content = useSiteContentStore()
+const reviewItems = computed(() =>
+  content.reviewsSource === 'google' && content.googleReviews.length
+    ? content.googleReviews
+    : siteConfig.testimonials,
+)
 </script>
 
 <template>
@@ -54,6 +61,6 @@ const isPortfolio = computed(() => siteConfig.variant === 'portfolio')
   />
   <TestimonialsSection
     eyebrow="Kind words"
-    :items="siteConfig.testimonials"
+    :items="reviewItems"
   />
 </template>
