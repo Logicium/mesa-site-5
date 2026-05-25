@@ -304,7 +304,7 @@ async function saveRename(siteId: string) {
   try {
     const r = await contentClient.renameSite(siteId, nameDraft.value.trim())
     const idx = sites.value.findIndex(x => x.id === siteId)
-    if (idx >= 0) sites.value[idx] = { ...sites.value[idx], displayName: r.displayName }
+    if (idx >= 0) sites.value[idx] = { ...sites.value[idx]!, displayName: r.displayName }
     editingName.value = null
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
