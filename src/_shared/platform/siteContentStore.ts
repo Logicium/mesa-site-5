@@ -6,7 +6,7 @@
  * config is used unchanged — so the site never breaks.
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { contentClient } from './contentClient'
 import { PLATFORM_ENABLED, PLATFORM_SITE_KEY } from './config'
 
@@ -46,11 +46,35 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   const hydrating = ref(false)
   const error = ref<string | null>(null)
 
+  // Live Google reviews, mapped to the TestimonialsSection shape.
+  const googleReviews = ref<Array<{ quote: string; author: string; source?: string; rating?: number }>>([])
+  const googleReviewsLoaded = ref(false)
+
   const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SITE_KEY)
+
+  /** 'manual' (hand-written testimonials) or 'google' (live reviews). */
+  const reviewsSource = computed<'manual' | 'google'>(() => {
+    const cfg = config.value as { reviewsSource?: string } | null
+    return cfg?.reviewsSource === 'google' ? 'google' : 'manual'
+  })
 
   // Templates seed the initial value with their build-time siteConfig.
   function setBuildTimeConfig(cfg: unknown) {
     if (config.value === null) config.value = cfg
+  }
+
+  async function loadGoogleReviews() {
+    if (!isPlatform.value || googleReviewsLoaded.value) return
+    try {
+      const list = await contentClient.fetchReviews()
+      googleReviews.value = list.map(r => ({
+        quote: r.text,
+        author: r.author,
+        source: r.source || 'Google',
+        rating: r.rating,
+      }))
+      googleReviewsLoaded.value = true
+    } catch { /* ignore — testimonials remain the fallback */ }
   }
 
   async function hydrate() {
@@ -68,5 +92,14 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     }
   }
 
-  return { config, hydrated, hydrating, error, isPlatform, hydrate, setBuildTimeConfig }
+  // Whenever the public site is configured for Google reviews, fetch them once.
+  watch(reviewsSource, (s) => {
+    if (s === 'google') void loadGoogleReviews()
+  }, { immediate: true })
+
+  return {
+    config, hydrated, hydrating, error, isPlatform,
+    reviewsSource, googleReviews,
+    hydrate, setBuildTimeConfig, loadGoogleReviews,
+  }
 })
