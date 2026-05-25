@@ -5,11 +5,13 @@ import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLef
 import { useSiteTheme } from '../composables/useSiteTheme'
 import { useSectionFlash } from '../composables/useSectionFlash'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
+import { useSiteContentStore } from '../platform/siteContentStore'
 import { THEME_LIST } from '../themes'
 import { SWATCH_LIST } from '../themes/swatches'
 import { SWATCH_GROUP_LABELS, type SwatchGroup } from '../themes/tokens'
 
 const auth = useAdminAuthStore()
+const content = useSiteContentStore()
 
 // Group swatches by their `group` field so the picker renders sections
 // (Neutral / Earth / Warm / Bold / Dark / Neon) instead of one flat grid.
@@ -182,6 +184,43 @@ watch(open, (v) => {
     settled.value = false
   }
 })
+
+/* ── Owner-driven publish ──
+   When a signed-in site owner tweaks any setting, debounce briefly and push
+   the new values to the backend so other visitors / incognito tabs render
+   the same theme. No-op for anonymous viewers — they only touch localStorage. */
+const themeSnapshot = computed(() => ({
+  theme: themeName.value,
+  swatch: swatchName.value,
+  variant: variant.value,
+  alignment: alignment.value,
+  style: {
+    heroStyle: heroStyle.value,
+    subheroStyle: subheroStyle.value,
+    footerStyle: footerStyle.value,
+    siteStyle: siteStyle.value,
+    sections: {
+      contact: contactStyle.value,
+      hours: hoursStyle.value,
+      gallery: galleryStyle.value,
+      reviews: reviewsStyle.value,
+    },
+  },
+}))
+
+let publishTimer: number | null = null
+let publishedInitial = false
+watch(themeSnapshot, (snap) => {
+  // Skip the first emit so just mounting (or hydration syncing refs) doesn't
+  // immediately push to the server.
+  if (!publishedInitial) { publishedInitial = true; return }
+  if (!auth.owner || !content.isPlatform) return
+  if (publishTimer) clearTimeout(publishTimer)
+  publishTimer = window.setTimeout(() => {
+    publishTimer = null
+    content.saveThemePatch(snap).catch(() => { /* silent — falls back to local-only */ })
+  }, 800)
+}, { deep: true })
 </script>
 
 <template>
