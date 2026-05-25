@@ -2,7 +2,7 @@
  * Thin fetch wrapper around the archetype-service API.
  * Sends credentials (cookie session for admin endpoints); throws on non-2xx.
  */
-import { PLATFORM_API, PLATFORM_SLUG } from './config'
+import { PLATFORM_API, PLATFORM_SITE_KEY } from './config'
 
 export type GooglePlacePreview = {
   placeId: string
@@ -43,20 +43,20 @@ export const contentClient = {
   fetchContent: () =>
     request<{ slug: string; archetype: string; plan: string; content: Record<string, unknown> }>(
       'GET',
-      `/sites/${encodeURIComponent(PLATFORM_SLUG)}/content`,
+      `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/content`,
     ),
   fetchReviews: () =>
     request<{ rating: number; author: string; text: string; source: string }[]>(
       'GET',
-      `/sites/${encodeURIComponent(PLATFORM_SLUG)}/reviews`,
+      `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/reviews`,
     ).catch(() => [] as Array<{ rating: number; author: string; text: string; source: string }>),
   fetchInstagram: () =>
     request<{ media: Array<{ id: string; media_url: string; permalink: string; caption?: string }> }>(
       'GET',
-      `/sites/${encodeURIComponent(PLATFORM_SLUG)}/instagram`,
+      `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/instagram`,
     ).catch(() => ({ media: [] })),
   submitForm: (type: 'contact' | 'newsletter', fields: Record<string, string>, captcha?: string) =>
-    request<{ ok: true }>('POST', `/sites/${encodeURIComponent(PLATFORM_SLUG)}/submissions`, {
+    request<{ ok: true }>('POST', `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/submissions`, {
       type,
       fields,
       captcha,
