@@ -97,7 +97,7 @@ export const contentClient = {
   getDraft: (siteId: string) => request<{ version: number; published: boolean; payload: Record<string, unknown> }>('GET', `/admin/sites/${siteId}/content/draft`),
   saveDraft: (siteId: string, payload: Record<string, unknown>) => request<{ version: number; published: boolean }>('PUT', `/admin/sites/${siteId}/content/draft`, { payload }),
   publish: (siteId: string, payload?: Record<string, unknown>) => request<{ version: number; publishedAt: string }>('POST', `/admin/sites/${siteId}/content/publish`, { payload }),
-  listVersions: (siteId: string) => request<Array<{ version: number; published: boolean; publishedAt?: string; createdAt: string }>>('GET', `/admin/sites/${siteId}/content/versions`),
+  listVersions: (siteId: string) => request<Array<{ version: number; published: boolean; publishedAt?: string; createdAt: string; changes?: { paths: string[]; count: number } }>>('GET', `/admin/sites/${siteId}/content/versions`),
   restoreVersion: (siteId: string, version: number) => request<{ version: number; publishedAt: string }>('POST', `/admin/sites/${siteId}/content/versions/${version}/restore`),
   uploadMedia: (siteId: string, filename: string, contentType: string, base64: string) => request<{ url: string }>('POST', `/admin/sites/${siteId}/media`, { filename, contentType, base64 }),
 
