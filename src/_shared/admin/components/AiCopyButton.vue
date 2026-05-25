@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Sparkles } from 'lucide-vue-next'
 import { contentClient } from '../../platform/contentClient'
 
 const props = defineProps<{
@@ -50,17 +51,19 @@ function close() { open.value = false }
     <button
       type="button"
       class="ai-btn"
-      :title="ariaLabel || `Generate ${field} with AI`"
-      :aria-label="ariaLabel || `Generate ${field} with AI`"
+      :class="{ 'is-loading': loading }"
+      :title="ariaLabel || `Suggest ${field}`"
+      :aria-label="ariaLabel || `Suggest ${field}`"
+      :disabled="loading"
       @click="run"
     >
-      <span class="ai-btn__spark">✦</span>
-      <span class="ai-btn__label">AI</span>
+      <Sparkles :size="13" :stroke-width="2" />
+      <span class="ai-btn__label">Suggest</span>
     </button>
     <div v-if="open" class="ai-pop" @click.self="close">
       <div class="ai-pop__panel">
         <header class="ai-pop__head">
-          <strong>AI suggestions · {{ field }}</strong>
+          <strong>Suggestions · {{ field }}</strong>
           <button type="button" class="ai-pop__close" @click="close">×</button>
         </header>
         <p v-if="loading" class="ai-pop__muted">Generating…</p>
@@ -81,26 +84,44 @@ function close() { open.value = false }
 <style scoped>
 .ai-btn-wrap { position: relative; display: inline-flex; }
 .ai-btn {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #fff;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.35rem 0.7rem;
+  border: none; border-radius: 99px;
+  /* Dramatic fully-themed gradient: light accent → accent → deep accent. */
   background: linear-gradient(
     135deg,
-    var(--adm-accent) 0%,
-    color-mix(in srgb, var(--adm-accent-deep, var(--adm-accent)) 80%, #6d28d9) 100%
+    color-mix(in srgb, var(--adm-accent) 60%, white 40%) 0%,
+    var(--adm-accent) 45%,
+    var(--adm-accent-deep, color-mix(in srgb, var(--adm-accent) 55%, black 45%)) 100%
   );
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--adm-accent) 35%, transparent);
-  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  color: #fff;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+  cursor: pointer;
+  position: relative; overflow: hidden;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--adm-accent) 30%, transparent);
+  transition: filter 140ms ease, transform 120ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
-.ai-btn:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 3px 10px color-mix(in srgb, var(--adm-accent) 45%, transparent); }
+.ai-btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--adm-accent) 45%, transparent);
+}
 .ai-btn:active { transform: translateY(0); }
-.ai-btn__spark { font-size: 0.85rem; line-height: 1; }
+.ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .ai-btn__label { line-height: 1; }
+
+@keyframes ai-btn-spin { to { transform: rotate(360deg); } }
+.ai-btn.is-loading { pointer-events: none; }
+.ai-btn.is-loading > * { visibility: hidden; }
+.ai-btn.is-loading::after {
+  content: ''; position: absolute; inset: 0; margin: auto;
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ai-btn-spin 0.7s linear infinite;
+}
 
 /* Popover */
 .ai-pop {
