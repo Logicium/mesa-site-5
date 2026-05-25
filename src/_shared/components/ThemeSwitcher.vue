@@ -436,9 +436,18 @@ watch(open, (v) => {
 .ap-switcher {
   position: fixed; bottom: 1rem; right: 1rem; z-index: 100;
   font-family: var(--ap-font-body); font-size: 0.85rem;
-  background: color-mix(in srgb, var(--ap-surface) 78%, transparent);
-  backdrop-filter: blur(14px) saturate(140%);
+  /* rgba fallback first so prod CSS minifiers that fold/precompute color-mix
+     don't collapse the panel to fully opaque; the color-mix below overrides
+     it in modern browsers. */
+  background: rgba(245, 244, 240, 0.72);
+  background: color-mix(in srgb, var(--ap-surface) 72%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  /* Force our own stacking context so backdrop-filter always has a backdrop
+     to sample, regardless of whatever ancestor compositing the prod build
+     ends up with. */
+  isolation: isolate;
+  will-change: backdrop-filter;
   border: 1px solid color-mix(in srgb, var(--ap-line) 85%, transparent);
   border-radius: 999px;
   box-shadow: 0 10px 40px -10px color-mix(in srgb, var(--ap-ink) 35%, transparent),
