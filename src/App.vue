@@ -11,11 +11,11 @@ import AppFooter from '@apotome/archetype-shared/components/layout/AppFooter.vue
 import AppLoader from '@apotome/archetype-shared/components/AppLoader.vue'
 import ThemeSwitcher from '@apotome/archetype-shared/components/ThemeSwitcher.vue'
 
-const { init } = useSiteTheme()
+const { initFromConfig } = useSiteTheme()
 const { isReady, preloadCritical } = useImagePreload()
 
 onMounted(async () => {
-  init(siteConfig.theme, siteConfig.swatch, siteConfig.variant, 'dine')
+  initFromConfig(siteConfig, 'dine')
   useApScrollbar()
   await preloadCritical([
     siteConfig.photos.hero.src,
