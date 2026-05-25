@@ -23,6 +23,12 @@ let searchTimer: number | null = null
 
 async function loadConnection() {
   if (!siteId.value) { connected.value = null; savedReviews.value = []; return }
+  // Reset before fetching so a slow request never shows the previous site's data.
+  connected.value = null
+  savedReviews.value = []
+  results.value = []
+  query.value = ''
+  status.value = ''
   loading.value = true
   error.value = null
   try {
@@ -168,6 +174,7 @@ watch(siteId, loadConnection)
         <div class="rv-grid">
           <div class="rv-card rv-map" v-if="mapEmbedUrl">
             <iframe
+              :key="connected.placeId"
               :src="mapEmbedUrl"
               loading="lazy"
               referrerpolicy="no-referrer-when-downgrade"
