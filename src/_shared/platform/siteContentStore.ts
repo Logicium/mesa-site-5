@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { contentClient } from './contentClient'
-import { PLATFORM_ENABLED, PLATFORM_SLUG } from './config'
+import { PLATFORM_ENABLED, PLATFORM_SITE_KEY } from './config'
 
 function deepMerge<T>(base: T, override: unknown): T {
   if (override === null || override === undefined) return base
@@ -46,7 +46,7 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   const hydrating = ref(false)
   const error = ref<string | null>(null)
 
-  const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SLUG)
+  const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SITE_KEY)
 
   // Templates seed the initial value with their build-time siteConfig.
   function setBuildTimeConfig(cfg: unknown) {
