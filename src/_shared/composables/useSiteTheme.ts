@@ -124,6 +124,33 @@ export function useSiteTheme() {
     if (!_saved.alignment) alignmentRef.value = alignment
   }
 
+  /**
+   * Convenience initializer that reads every theme-switcher field from a
+   * generic site-config object (with sane defaults) so templates don't have
+   * to enumerate the growing positional argument list on every call.
+   * Picks up `style`-nested fields published by the live ThemeSwitcher.
+   */
+  function initFromConfig(cfg: unknown, archetype: Archetype = 'dine'): void {
+    const c = (cfg ?? {}) as Record<string, unknown>
+    const style = (c.style ?? {}) as Record<string, unknown>
+    const sections = (style.sections ?? c.sections ?? {}) as Record<string, unknown>
+    init(
+      (c.theme as ThemeName) ?? 'studio',
+      (c.swatch as SwatchName) ?? 'sand',
+      (c.variant as SiteVariant) ?? 'essentials',
+      archetype,
+      (style.heroStyle as HeroStyle) ?? (c.heroStyle as HeroStyle) ?? '1',
+      (style.footerStyle as FooterStyle) ?? (c.footerStyle as FooterStyle) ?? '1',
+      (sections.contact as ContactStyle) ?? '1',
+      (sections.hours as HoursStyle) ?? '1',
+      (sections.gallery as GalleryStyle) ?? '1',
+      (sections.reviews as ReviewsStyle) ?? '1',
+      (style.subheroStyle as SubheroStyle) ?? (c.subheroStyle as SubheroStyle) ?? '1',
+      (style.siteStyle as SiteStyle) ?? (c.siteStyle as SiteStyle) ?? '1',
+      (style.alignment as Alignment) ?? (c.alignment as Alignment) ?? 'left',
+    )
+  }
+
   return {
     theme, swatch,
     themeName: themeRef, swatchName: swatchRef,
@@ -140,6 +167,7 @@ export function useSiteTheme() {
     setSiteStyle,
     setAlignment,
     init,
+    initFromConfig,
   }
 }
 
