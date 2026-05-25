@@ -3,6 +3,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { onMounted, computed, watch, ref, onBeforeUnmount } from 'vue'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useActiveSiteStore } from '../platform/activeSiteStore'
+import ToastHost from './components/ToastHost.vue'
 import './admin.css'
 
 const auth = useAdminAuthStore()
@@ -184,6 +185,7 @@ function initials(email?: string) {
       </div>
       <RouterView v-else />
     </main>
+    <ToastHost />
   </div>
 </template>
 
