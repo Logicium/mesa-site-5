@@ -1,36 +1,55 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 /**
- * Two-phase image pre-loading:
- *  1. Await `preloadCritical(urls)` — blocks until those images are in cache.
- *  2. Call `preloadBackground(urls)` — fire-and-forget, silently warms the cache.
+ * Two-phase image pre-loading with deterministic progress tracking:
+ *  1. `preloadCritical(urls)` — awaits, drives `progress` / `loaded` / `total`
+ *     and flips `isReady` true when done.
+ *  2. `preloadBackground(urls)` — fire-and-forget, never blocks the splash.
  *
- * Both use the browser's native Image() API, so the downloads are stored in
- * the HTTP cache automatically. Any <img> or CSS background that later
- * references the same URL will be served instantly from cache.
+ * Counts are scoped to the critical queue, so the splash bar reflects "what's
+ * needed to render the first paint" rather than every asset on the site.
  */
-function loadOne(url: string): Promise<void> {
+function loadOne(url: string, onDone: () => void): Promise<void> {
   return new Promise(resolve => {
     const img = new Image()
-    img.onload = () => resolve()
-    img.onerror = () => resolve() // never block the app on a broken image
+    const finish = () => { onDone(); resolve() }
+    img.onload = finish
+    img.onerror = finish // never block the app on a broken image
     img.src = url
   })
 }
 
 export function useImagePreload() {
   const isReady = ref(false)
+  const loaded = ref(0)
+  const total = ref(0)
+  const label = ref('Preparing your experience…')
+  const progress = computed(() =>
+    total.value === 0 ? 0 : Math.min(100, Math.round((loaded.value / total.value) * 100))
+  )
 
   /** Awaitable: resolves when all `urls` have loaded (or errored). */
-  async function preloadCritical(urls: string[]): Promise<void> {
-    await Promise.all(urls.map(loadOne))
+  async function preloadCritical(urls: string[], stepLabel?: string): Promise<void> {
+    const list = urls.filter((u): u is string => typeof u === 'string' && u.length > 0)
+    total.value = list.length
+    loaded.value = 0
+    if (list.length === 0) {
+      label.value = 'Ready'
+      isReady.value = true
+      return
+    }
+    label.value = stepLabel ?? `Loading ${list.length} asset${list.length === 1 ? '' : 's'}…`
+    await Promise.all(list.map(u => loadOne(u, () => { loaded.value++ })))
+    label.value = 'Ready'
     isReady.value = true
   }
 
-  /** Fire-and-forget: starts downloads without awaiting. */
+  /** Fire-and-forget: starts downloads without awaiting or tracking. */
   function preloadBackground(urls: string[]): void {
-    urls.forEach(loadOne)
+    urls
+      .filter((u): u is string => typeof u === 'string' && u.length > 0)
+      .forEach(u => { void loadOne(u, () => {}) })
   }
 
-  return { isReady, preloadCritical, preloadBackground }
+  return { isReady, progress, loaded, total, label, preloadCritical, preloadBackground }
 }
