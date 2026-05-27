@@ -108,6 +108,7 @@ export const contentClient = {
   getGooglePlace: (siteId: string) => request<{ placeId: string | null; preview: GooglePlacePreview | null }>('GET', `/admin/sites/${siteId}/google-place`),
   disconnectGooglePlace: (siteId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/google-place/disconnect`),
   searchGooglePlaces: (siteId: string, q: string) => request<{ results: Array<{ placeId: string; name: string; address: string; rating: number | null; totalRatings: number | null }> }>('GET', `/admin/sites/${siteId}/google-places/search?q=${encodeURIComponent(q)}`),
+  geocodeAddress: (siteId: string, q: string) => request<{ results: Array<{ placeId: string; address: string }> }>('GET', `/admin/sites/${siteId}/geocode?q=${encodeURIComponent(q)}`),
   listAdminReviews: (siteId: string) => request<Array<{ id: string; rating: number; author: string; text: string; source: string; fetchedAt: string }>>('GET', `/admin/sites/${siteId}/reviews`),
 
   getInstagramConnect: (siteId: string) => request<{ url: string }>('GET', `/admin/sites/${siteId}/instagram/connect`),
