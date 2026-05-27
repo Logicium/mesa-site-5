@@ -1,12 +1,15 @@
 <script setup lang="ts">
 /**
- * MapSearchPicker — Google Geocoding search + Google Maps Embed preview.
+ * MapSearchPicker — address autocomplete + Google Maps embed preview.
  *
- * Uses the Google Geocoding REST API (browser-safe fetch) for address search
- * and the Google Maps Embed API for the live map preview. Requires
- * VITE_GOOGLE_MAPS_API_KEY to be set in your environment.
+ * Geocoding goes through the backend (`/admin/sites/:id/geocode`) so the
+ * Google API key never leaves the server. The embed iframe uses the keyless
+ * `maps.google.com/?q=place_id:X&output=embed` form which works without any
+ * client-side key.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { contentClient } from '../../platform/contentClient'
+import { useActiveSiteStore } from '../../platform/activeSiteStore'
 
 const props = defineProps<{
   address: string
@@ -18,13 +21,10 @@ const emit = defineEmits<{
   (e: 'update:embedUrl', v: string): void
 }>()
 
-interface GeoResult {
-  formatted_address: string
-  place_id: string
-  geometry: { location: { lat: number; lng: number } }
-}
+interface GeoResult { placeId: string; address: string }
 
-const API_KEY = (import.meta as { env: Record<string, string> }).env.VITE_GOOGLE_MAPS_API_KEY ?? ''
+const activeSites = useActiveSiteStore()
+const siteId = computed(() => activeSites.activeId)
 
 const query = ref(props.address)
 const open = ref(false)
@@ -32,37 +32,33 @@ const loading = ref(false)
 const results = ref<GeoResult[]>([])
 const lastErr = ref<string>('')
 let timer: ReturnType<typeof setTimeout> | null = null
-let abort: AbortController | null = null
+let seq = 0
 
 watch(() => props.address, (v) => {
   if (v !== query.value) query.value = v
 })
 
 function buildEmbed(placeId: string): string {
-  return `https://www.google.com/maps/embed/v1/place?key=${API_KEY}&q=place_id:${placeId}`
+  // Keyless embed — same URL form used by the Google Reviews admin view.
+  return `https://www.google.com/maps?q=place_id:${encodeURIComponent(placeId)}&output=embed`
 }
 
 async function search(q: string) {
   if (!q || q.trim().length < 3) { results.value = []; open.value = false; return }
-  if (!API_KEY) { lastErr.value = 'VITE_GOOGLE_MAPS_API_KEY is not set.'; return }
+  if (!siteId.value) { lastErr.value = 'Select a site first.'; return }
   loading.value = true
   lastErr.value = ''
-  if (abort) abort.abort()
-  abort = new AbortController()
+  const mySeq = ++seq
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&key=${API_KEY}`
-    const r = await fetch(url, { signal: abort.signal })
-    if (!r.ok) throw new Error(`Geocode request failed (${r.status})`)
-    const data = await r.json() as { status: string; results: GeoResult[]; error_message?: string }
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      throw new Error(data.error_message ?? data.status)
-    }
-    results.value = data.results ?? []
+    const res = await contentClient.geocodeAddress(siteId.value, q)
+    if (mySeq !== seq) return
+    results.value = res.results
     open.value = results.value.length > 0
   } catch (e) {
-    if ((e as Error).name !== 'AbortError') lastErr.value = (e as Error).message
+    if (mySeq !== seq) return
+    lastErr.value = (e as Error).message
   } finally {
-    loading.value = false
+    if (mySeq === seq) loading.value = false
   }
 }
 
@@ -74,9 +70,9 @@ function onInput(v: string) {
 }
 
 function pick(h: GeoResult) {
-  query.value = h.formatted_address
-  emit('update:address', h.formatted_address)
-  emit('update:embedUrl', buildEmbed(h.place_id))
+  query.value = h.address
+  emit('update:address', h.address)
+  emit('update:embedUrl', buildEmbed(h.placeId))
   open.value = false
 }
 
@@ -86,7 +82,7 @@ function onBlur() {
 
 const previewSrc = computed(() => props.embedUrl || '')
 
-onBeforeUnmount(() => { if (abort) abort.abort(); if (timer) clearTimeout(timer) })
+onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 </script>
 
 <template>
@@ -105,9 +101,9 @@ onBeforeUnmount(() => { if (abort) abort.abort(); if (timer) clearTimeout(timer)
       />
       <span v-if="loading" class="msp__spinner" aria-hidden="true" />
       <ul v-if="open && results.length" class="msp__results" role="listbox">
-        <li v-for="h in results" :key="h.place_id">
+        <li v-for="h in results" :key="h.placeId">
           <button type="button" class="msp__result" @mousedown.prevent="pick(h)">
-            {{ h.formatted_address }}
+            {{ h.address }}
           </button>
         </li>
       </ul>
