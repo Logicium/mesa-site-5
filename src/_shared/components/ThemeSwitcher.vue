@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLeft, AlignCenter, Palette, LayoutTemplate, LayoutGrid, Globe, Code2, User } from 'lucide-vue-next'
+import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLeft, AlignCenter, Palette, LayoutTemplate, LayoutGrid, Globe, Code2, User, Save, Loader2, AlertCircle } from 'lucide-vue-next'
 import { useSiteTheme } from '../composables/useSiteTheme'
 import { useSectionFlash } from '../composables/useSectionFlash'
+import { usePreferences } from '../composables/usePreferences'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useSiteContentStore } from '../platform/siteContentStore'
 import { THEME_LIST } from '../themes'
@@ -12,6 +13,7 @@ import { SWATCH_GROUP_LABELS, type SwatchGroup } from '../themes/tokens'
 
 const auth = useAdminAuthStore()
 const content = useSiteContentStore()
+const { state: prefs, setThemeAutosave } = usePreferences()
 
 // Group swatches by their `group` field so the picker renders sections
 // (Neutral / Earth / Warm / Bold / Dark / Neon) instead of one flat grid.
@@ -186,9 +188,12 @@ watch(open, (v) => {
 })
 
 /* ── Owner-driven publish ──
-   When a signed-in site owner tweaks any setting, debounce briefly and push
-   the new values to the backend so other visitors / incognito tabs render
-   the same theme. No-op for anonymous viewers — they only touch localStorage. */
+   When a signed-in site owner tweaks any setting we push the new values
+   to the backend so other visitors render the same theme. In autosave mode
+   we fire on the next tick (no debounce delay — settings appear instantly
+   for new visitors). With autosave off the owner has to hit Save and the
+   button surfaces a dirty/saving/saved/error state. Anonymous visitors
+   never hit the network — they stay localStorage-only. */
 const themeSnapshot = computed(() => ({
   theme: themeName.value,
   swatch: swatchName.value,
@@ -208,19 +213,51 @@ const themeSnapshot = computed(() => ({
   },
 }))
 
+const canPublish = computed(() => !!auth.owner && content.isPlatform)
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+const saveState = ref<SaveState>('idle')
+const saveError = ref<string | null>(null)
+const dirty = ref(false)
 let publishTimer: number | null = null
+let savedResetTimer: number | null = null
 let publishedInitial = false
-watch(themeSnapshot, (snap) => {
+
+async function performSave() {
+  if (!canPublish.value) return
+  if (publishTimer) { clearTimeout(publishTimer); publishTimer = null }
+  saveState.value = 'saving'
+  saveError.value = null
+  try {
+    await content.saveThemePatch(themeSnapshot.value)
+    dirty.value = false
+    saveState.value = 'saved'
+    if (savedResetTimer) clearTimeout(savedResetTimer)
+    savedResetTimer = window.setTimeout(() => {
+      if (saveState.value === 'saved') saveState.value = 'idle'
+    }, 1800)
+  } catch (e) {
+    saveState.value = 'error'
+    saveError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+watch(themeSnapshot, () => {
   // Skip the first emit so just mounting (or hydration syncing refs) doesn't
   // immediately push to the server.
   if (!publishedInitial) { publishedInitial = true; return }
-  if (!auth.owner || !content.isPlatform) return
+  if (!canPublish.value) return
+  dirty.value = true
+  if (!prefs.value.themeAutosave) return
+  // Autosave: coalesce only enough to merge synchronous bursts; effectively
+  // immediate from a human's perspective.
   if (publishTimer) clearTimeout(publishTimer)
-  publishTimer = window.setTimeout(() => {
-    publishTimer = null
-    content.saveThemePatch(snap).catch(() => { /* silent — falls back to local-only */ })
-  }, 800)
+  publishTimer = window.setTimeout(() => { publishTimer = null; performSave() }, 0)
 }, { deep: true })
+
+// When the owner flips autosave back on while dirty, save right away.
+watch(() => prefs.value.themeAutosave, (on) => {
+  if (on && dirty.value && canPublish.value) performSave()
+})
 </script>
 
 <template>
@@ -291,6 +328,48 @@ watch(themeSnapshot, (snap) => {
             <ChevronDown :size="18" />
           </button>
         </div>
+
+        <!-- Save / autosave row. Only owners on platform builds see this; the
+             controls explicitly surface what the picker is doing with each
+             tweak (silent failures used to leave owners thinking everything
+             was saved when it wasn't). -->
+        <div v-if="canPublish" class="ap-switcher__save">
+          <button
+            type="button"
+            class="ap-switcher__save-btn"
+            :class="{
+              'is-saving': saveState === 'saving',
+              'is-saved': saveState === 'saved',
+              'is-error': saveState === 'error',
+              'is-dirty': dirty && saveState !== 'saving',
+            }"
+            :disabled="saveState === 'saving' || (!dirty && saveState === 'idle')"
+            :title="saveError || ''"
+            @click="performSave"
+          >
+            <Loader2 v-if="saveState === 'saving'" :size="14" class="ap-switcher__spin" />
+            <Check v-else-if="saveState === 'saved'" :size="14" />
+            <AlertCircle v-else-if="saveState === 'error'" :size="14" />
+            <Save v-else :size="14" />
+            <span>
+              {{ saveState === 'saving' ? 'Saving…'
+                 : saveState === 'saved' ? 'Saved'
+                 : saveState === 'error' ? 'Retry save'
+                 : dirty ? 'Save changes' : 'Saved' }}
+            </span>
+          </button>
+          <label class="ap-switcher__autosave" :title="prefs.themeAutosave ? 'Autosave on — changes publish instantly' : 'Autosave off — click Save to publish'">
+            <input
+              type="checkbox"
+              :checked="prefs.themeAutosave"
+              @change="setThemeAutosave(($event.target as HTMLInputElement).checked)"
+            />
+            <span>Autosave</span>
+          </label>
+        </div>
+        <p v-if="canPublish && saveState === 'error' && saveError" class="ap-switcher__save-err">
+          {{ saveError }}
+        </p>
 
         <div class="ap-switcher__tabs" role="tablist">
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'theme' }" @click="tab = 'theme'"><Palette :size="14" /><span>theme</span></button>
@@ -665,6 +744,71 @@ watch(themeSnapshot, (snap) => {
 /* Chevron points down by default (in open state — clicking collapses).
    Pre-rotate so the icon visually invites "click to close". */
 .ap-switcher.is-open .ap-switcher__close { transform: rotate(0deg); }
+
+/* ── Save / autosave row ───────────────────────────────── */
+.ap-switcher__save {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0.85rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--ap-line) 50%, transparent);
+}
+.ap-switcher__save-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ap-line) 70%, transparent);
+  background: color-mix(in srgb, var(--ap-ink) 5%, transparent);
+  color: var(--ap-ink);
+  font: inherit; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+.ap-switcher__save-btn:disabled { cursor: default; opacity: 0.55; }
+.ap-switcher__save-btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ap-ink) 10%, transparent);
+}
+.ap-switcher__save-btn.is-dirty {
+  background: var(--ap-primary);
+  border-color: var(--ap-primary);
+  color: var(--ap-on-primary, var(--ap-surface));
+  opacity: 1;
+}
+.ap-switcher__save-btn.is-dirty:not(:disabled):hover {
+  background: color-mix(in srgb, var(--ap-primary) 88%, var(--ap-ink));
+}
+.ap-switcher__save-btn.is-saving { opacity: 0.85; }
+.ap-switcher__save-btn.is-saved {
+  background: color-mix(in srgb, var(--ap-primary) 18%, transparent);
+  border-color: color-mix(in srgb, var(--ap-primary) 45%, transparent);
+  color: var(--ap-primary);
+  opacity: 1;
+}
+.ap-switcher__save-btn.is-error {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.45);
+  color: rgb(185, 28, 28);
+  opacity: 1;
+}
+.ap-switcher__save-btn :deep(svg) { display: block; }
+.ap-switcher__spin { animation: ap-switcher-spin 0.9s linear infinite; }
+@keyframes ap-switcher-spin { to { transform: rotate(360deg); } }
+
+.ap-switcher__autosave {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  margin-left: auto;
+  font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ap-ink-muted, var(--ap-ink));
+  cursor: pointer; user-select: none;
+}
+.ap-switcher__autosave input { accent-color: var(--ap-primary); cursor: pointer; }
+
+.ap-switcher__save-err {
+  margin: 0; padding: 0.4rem 0.85rem 0.55rem;
+  font-size: 0.72rem; color: rgb(185, 28, 28);
+  border-bottom: 1px solid color-mix(in srgb, var(--ap-line) 50%, transparent);
+  word-break: break-word;
+}
 
 /* ── Tabs ──────────────────────────────────────────────── */
 .ap-switcher__tabs {
