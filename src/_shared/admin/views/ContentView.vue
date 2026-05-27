@@ -6,6 +6,7 @@ import { useActiveSiteStore } from '../../platform/activeSiteStore'
 import { tabsForArchetype, type TabId } from '../contentSchemas'
 import AiCopyButton from '../components/AiCopyButton.vue'
 import MapSearchPicker from '../components/MapSearchPicker.vue'
+import TextAreaField from '../../components/forms/TextAreaField.vue'
 import { useToast } from '../composables/useToast'
 
 interface PhotoSlot { src: string; alt?: string; caption?: string }
@@ -22,7 +23,7 @@ interface ProductItem { name: string; description?: string; price?: string; phot
 interface PillarItem  { title: string; body?: string }
 
 interface SiteContent {
-  brand: string; tagline: string; blurb: string; theme: string; swatch: string; variant: string
+  brand: string; tagline: string; blurb: string; favicon?: string; theme: string; swatch: string; variant: string
   contact: { address: string; phone: string; email: string; mapEmbedUrl?: string }
   hours: HourRow[]
   photos: { hero: PhotoSlot; about: PhotoSlot; gallery: PhotoSlot[] }
@@ -44,7 +45,7 @@ interface SiteContent {
 
 function blankContent(): SiteContent {
   return {
-    brand: '', tagline: '', blurb: '', theme: 'studio', swatch: 'sand', variant: 'essentials',
+    brand: '', tagline: '', blurb: '', favicon: '', theme: 'studio', swatch: 'sand', variant: 'essentials',
     contact: { address: '', phone: '', email: '', mapEmbedUrl: '' },
     hours: [{ day: '', open: '' }],
     photos: { hero: { src: '', alt: '' }, about: { src: '', alt: '' }, gallery: [] },
@@ -157,6 +158,7 @@ function applyPayload(raw: Record<string, unknown>) {
   if (p.brand    !== undefined) c.brand    = p.brand    as string
   if (p.tagline  !== undefined) c.tagline  = p.tagline  as string
   if (p.blurb    !== undefined) c.blurb    = p.blurb    as string
+  if (p.favicon  !== undefined) c.favicon  = p.favicon  as string
   if (p.theme    !== undefined) c.theme    = p.theme    as string
   if (p.swatch   !== undefined) c.swatch   = p.swatch   as string
   if (p.variant  !== undefined) c.variant  = p.variant  as string
@@ -199,10 +201,9 @@ async function save(publish = false) {
 }
 
 // ─── Image upload ─────────────────────────────────────────────────────────────
-// Re-encode photos as lossless WebP before upload. Quality 1.0 keeps every
-// pixel of the source intact while still benefiting from WebP's better
-// compression vs. JPEG/PNG.
-const WEBP_QUALITY = 1.0
+// Upload the original file as-is. Canvas-based WebP re-encoding routinely
+// produced larger files than the source (browsers can't beat the camera's
+// own encoder on already-compressed JPEGs), so we skip it.
 
 function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -213,31 +214,14 @@ function readAsDataUrl(file: Blob): Promise<string> {
   })
 }
 
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((res, rej) => {
-    const img = new Image()
-    img.onload = () => res(img)
-    img.onerror = rej
-    img.src = dataUrl
-  })
-}
-
-/** Re-encode the file as WebP at WEBP_QUALITY. SVGs/GIFs/already-WebP files
- *  are passed through untouched. Returns base64 + new contentType + filename. */
+/** Read the file's bytes into base64 and pass through its original mime / name. */
 async function prepareImage(file: File): Promise<{ base64: string; contentType: string; filename: string }> {
-  if (/^image\/(svg|gif|webp)/.test(file.type)) {
-    const dataUrl = await readAsDataUrl(file)
-    return { base64: dataUrl.split(',')[1] ?? '', contentType: file.type, filename: file.name }
+  const dataUrl = await readAsDataUrl(file)
+  return {
+    base64: dataUrl.split(',')[1] ?? '',
+    contentType: file.type || 'application/octet-stream',
+    filename: file.name,
   }
-  const img = await loadImage(await readAsDataUrl(file))
-  const canvas = document.createElement('canvas')
-  canvas.width = img.naturalWidth
-  canvas.height = img.naturalHeight
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(img, 0, 0)
-  const dataUrl = canvas.toDataURL('image/webp', WEBP_QUALITY)
-  const baseName = file.name.replace(/\.[^.]+$/, '') || 'image'
-  return { base64: dataUrl.split(',')[1] ?? '', contentType: 'image/webp', filename: `${baseName}.webp` }
 }
 
 async function uploadImage(slot: PhotoSlot, key: string, file: File) {
@@ -253,6 +237,39 @@ async function uploadImage(slot: PhotoSlot, key: string, file: File) {
 function onPhotoFile(slot: PhotoSlot, key: string, evt: Event) {
   const file = (evt.target as HTMLInputElement).files?.[0]
   if (file) uploadImage(slot, key, file)
+}
+
+/** Upload many gallery photos at once. Each file becomes a new gallery slot. */
+async function onBulkGalleryFiles(evt: Event) {
+  const input = evt.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  for (const file of files) {
+    const slot: PhotoSlot = { src: '', alt: '' }
+    c.photos.gallery.push(slot)
+    const idx = c.photos.gallery.length - 1
+    await uploadImage(c.photos.gallery[idx], `g${idx}`, file)
+  }
+  input.value = ''
+}
+
+/** Upload the site's favicon (any image format the browser can read). */
+async function onFaviconFile(evt: Event) {
+  const input = evt.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  uploading.value['favicon'] = true
+  try {
+    // Skip the WebP re-encode — browsers want .ico/.png/.svg for favicons.
+    const base64 = (await readAsDataUrl(file)).split(',')[1] ?? ''
+    const r = await contentClient.uploadMedia(siteId.value, file.name, file.type || 'image/png', base64)
+    c.favicon = r.url
+    toast.success('Favicon uploaded')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    uploading.value['favicon'] = false
+    input.value = ''
+  }
 }
 
 // ─── List helpers ─────────────────────────────────────────────────────────────
@@ -440,7 +457,18 @@ watch(siteId, loadDraft)
           <span class="lbl-row">Short blurb (meta description &amp; intro paragraph)
             <AiCopyButton :site-id="siteId" field="blurb" prompt="A warm, concrete 2-3 sentence blurb under 60 words" :context="aiContext" @pick="(v) => c.blurb = v" />
           </span>
-          <textarea v-model="c.blurb" rows="3" />
+          <TextAreaField v-model="c.blurb" :rows="3" :maxlength="280" />
+        </label>
+        <label>Browser tab icon (favicon)
+          <div class="favicon-row">
+            <img v-if="c.favicon" :src="c.favicon" class="favicon-thumb" alt="Current favicon" />
+            <div v-else class="favicon-thumb favicon-thumb--empty" aria-hidden="true">ico</div>
+            <label class="file-btn">{{ uploading['favicon'] ? 'Uploading…' : (c.favicon ? 'Replace' : 'Upload') }}
+              <input type="file" accept="image/png,image/x-icon,image/svg+xml,image/vnd.microsoft.icon" :disabled="!!uploading['favicon']" @change="onFaviconFile" />
+            </label>
+            <input v-model="c.favicon" placeholder="or paste URL (.ico / .png / .svg)" class="flex-1" />
+            <button v-if="c.favicon" type="button" class="btn-remove btn-remove--icon" :title="'Clear favicon'" @click="c.favicon = ''">×</button>
+          </div>
         </label>
         <div class="row-3">
           <label>Theme
@@ -484,7 +512,7 @@ watch(siteId, loadDraft)
         <div v-for="(h, i) in c.hours" :key="i" class="list-row">
           <input v-model="h.day"  placeholder="Day / range (e.g. Tuesday – Thursday)" class="flex-3" />
           <input v-model="h.open" placeholder="Hours or 'Closed'" class="flex-2" />
-          <button type="button" class="btn-remove" @click="removeHour(i)">×</button>
+          <button type="button" class="btn-remove btn-remove--icon" @click="removeHour(i)">×</button>
         </div>
         <button type="button" class="btn-add" @click="addHour">+ Add row</button>
       </fieldset>
@@ -528,17 +556,27 @@ watch(siteId, loadDraft)
             <button type="button" class="btn-remove btn-remove--inline" @click="removeGallerySlot(i)">Remove</button>
           </div>
         </div>
-        <button type="button" class="btn-add" @click="addGallerySlot">+ Add gallery photo</button>
+        <div class="gallery-actions">
+          <button type="button" class="btn-add" @click="addGallerySlot">+ Add gallery photo</button>
+          <label class="file-btn file-btn--accent">+ Upload multiple
+            <input type="file" accept="image/*" multiple @change="onBulkGalleryFiles" />
+          </label>
+        </div>
       </fieldset>
 
       <!-- ── Story / About ── -->
       <fieldset v-if="activeTab === 'story'">
         <legend>Story / About section</legend>
         <label>Section heading<input v-model="c.story.title" /></label>
-        <div v-for="(_, i) in c.story.paragraphs" :key="i" class="list-row">
-          <textarea v-model="c.story.paragraphs[i]" rows="3" class="flex-1" placeholder="Paragraph text…" />
-          <AiCopyButton :site-id="siteId" :field="`story paragraph ${i + 1}`" prompt="A single paragraph (~60 words) for the About section" :context="aiContext" @pick="(v) => c.story.paragraphs[i] = v" />
-          <button type="button" class="btn-remove" @click="removeParagraph(i)">×</button>
+        <div v-for="(_, i) in c.story.paragraphs" :key="i" class="paragraph-row">
+          <div class="paragraph-row__head">
+            <span class="paragraph-row__label">Paragraph {{ i + 1 }}</span>
+            <div class="paragraph-row__actions">
+              <AiCopyButton :site-id="siteId" :field="`story paragraph ${i + 1}`" prompt="A single paragraph (~60 words) for the About section" :context="aiContext" @pick="(v) => c.story.paragraphs[i] = v" />
+              <button type="button" class="btn-remove btn-remove--icon" :title="'Remove paragraph'" @click="removeParagraph(i)">×</button>
+            </div>
+          </div>
+          <TextAreaField v-model="c.story.paragraphs[i]" :rows="4" :maxlength="600" placeholder="Paragraph text…" />
         </div>
         <button type="button" class="btn-add" @click="addParagraph">+ Add paragraph</button>
 
@@ -546,7 +584,7 @@ watch(siteId, loadDraft)
         <div v-for="(f, i) in (c.story.facts ?? [])" :key="i" class="list-row">
           <input v-model="f.label" placeholder="Label (e.g. Founded)" class="flex-1" />
           <input v-model="f.value" placeholder="Value (e.g. 2024)" class="flex-1" />
-          <button type="button" class="btn-remove" @click="removeFact(i)">×</button>
+          <button type="button" class="btn-remove btn-remove--icon" @click="removeFact(i)">×</button>
         </div>
         <button type="button" class="btn-add" @click="addFact">+ Add stat</button>
       </fieldset>
@@ -587,7 +625,7 @@ watch(siteId, loadDraft)
             <input v-model="item.description" placeholder="Description" class="flex-3" />
             <input v-model="item.price" placeholder="$0" style="max-width:80px" />
             <input :value="tagsStr(item)" @input="setTags(item, ($event.target as HTMLInputElement).value)" placeholder="V, GF…" style="max-width:100px" />
-            <button type="button" class="btn-remove" @click="removeMenuItem(cat, ii)">×</button>
+            <button type="button" class="btn-remove btn-remove--icon" @click="removeMenuItem(cat, ii)">×</button>
           </div>
           <button type="button" class="btn-add btn-add--indent" @click="addMenuItem(cat)">+ Add item</button>
         </div>
@@ -604,7 +642,7 @@ watch(siteId, loadDraft)
             <input v-model="r.rate" placeholder="Rate (e.g. $180 / night)" />
           </div>
           <input v-model="r.capacity" placeholder="Capacity (e.g. Sleeps 2)" />
-          <textarea v-model="r.description" rows="2" placeholder="Short description…" />
+          <TextAreaField v-model="r.description" :rows="2" :maxlength="300" placeholder="Short description…" />
           <div class="list-row">
             <img v-if="r.photo" :src="r.photo" class="photo-thumb" style="max-width:160px" />
             <label class="file-btn">{{ uploading[`room${i}`] ? 'Uploading…' : 'Upload photo' }}
@@ -627,8 +665,8 @@ watch(siteId, loadDraft)
             <input v-model="s.price" placeholder="Price (e.g. From $120)" />
           </div>
           <input v-model="s.duration" placeholder="Duration (e.g. 60 min)" />
-          <div class="lbl-row" style="align-items:flex-start">
-            <textarea v-model="s.description" rows="2" placeholder="Description…" style="flex:1" />
+          <div class="field-with-ai">
+            <TextAreaField v-model="s.description" :rows="2" :maxlength="300" placeholder="Description…" />
             <AiCopyButton :site-id="siteId" :field="`service: ${s.name || 'service'}`" prompt="A short, concrete service description (~30 words)" :context="aiContext" @pick="(v) => s.description = v" />
           </div>
           <button type="button" class="btn-remove" @click="removeService(i)">Remove service</button>
@@ -646,7 +684,7 @@ watch(siteId, loadDraft)
             <input v-model="p.price" placeholder="Price" />
           </div>
           <input v-model="p.href" placeholder="Link / Shopify URL (optional)" />
-          <textarea v-model="p.description" rows="2" placeholder="Description…" />
+          <TextAreaField v-model="p.description" :rows="2" :maxlength="300" placeholder="Description…" />
           <div class="list-row">
             <img v-if="p.photo" :src="p.photo" class="photo-thumb" style="max-width:160px" />
             <label class="file-btn">{{ uploading[`prod${i}`] ? 'Uploading…' : 'Upload photo' }}
@@ -666,13 +704,13 @@ watch(siteId, loadDraft)
           <span class="lbl-row">Mission statement
             <AiCopyButton :site-id="siteId" field="mission statement" prompt="A 1-2 sentence mission statement under 40 words" :context="aiContext" @pick="(v) => c.mission.statement = v" />
           </span>
-          <textarea v-model="c.mission.statement" rows="3" />
+          <TextAreaField v-model="c.mission.statement" :rows="3" :maxlength="240" />
         </label>
         <p class="section-sub">Pillars</p>
         <div v-for="(pi, i) in c.mission.pillars" :key="i" class="testimonial-row">
           <input v-model="pi.title" placeholder="Pillar title" />
-          <div class="lbl-row" style="align-items:flex-start">
-            <textarea v-model="pi.body" rows="2" placeholder="Body text…" style="flex:1" />
+          <div class="field-with-ai">
+            <TextAreaField v-model="pi.body" :rows="2" :maxlength="200" placeholder="Body text…" />
             <AiCopyButton :site-id="siteId" :field="`pillar: ${pi.title || 'pillar'}`" prompt="A short pillar description (~25 words)" :context="aiContext" @pick="(v) => pi.body = v" />
           </div>
           <button type="button" class="btn-remove" @click="removePillar(i)">Remove pillar</button>
@@ -702,7 +740,7 @@ watch(siteId, loadDraft)
           </p>
         </div>
         <div v-for="(t, i) in c.testimonials" :key="i" class="testimonial-row">
-          <textarea v-model="t.quote" rows="2" placeholder="Quote…" />
+          <TextAreaField v-model="t.quote" :rows="2" :maxlength="400" placeholder="Quote…" />
           <div class="row-2">
             <input v-model="t.author" placeholder="Author name" />
             <input v-model="t.source" placeholder="Source (Google, Yelp…)" />
@@ -718,7 +756,7 @@ watch(siteId, loadDraft)
         <div v-for="(s, i) in c.social" :key="i" class="list-row">
           <input v-model="s.label" placeholder="Label (Instagram, Facebook…)" class="flex-1" />
           <input v-model="s.href"  placeholder="https://…" class="flex-3" />
-          <button type="button" class="btn-remove" @click="removeSocial(i)">×</button>
+          <button type="button" class="btn-remove btn-remove--icon" @click="removeSocial(i)">×</button>
         </div>
         <button type="button" class="btn-add" @click="addSocial">+ Add link</button>
       </fieldset>
@@ -943,6 +981,62 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 }
 .btn-remove:hover { background: color-mix(in srgb, var(--adm-danger) 12%, transparent); border-color: var(--adm-danger); color: var(--adm-danger); }
 .btn-remove--inline { align-self: flex-end; margin-top: 0.25rem; }
+/* Square \u00d7 button sized to match a single-line input's outer height. */
+.btn-remove--icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* Story paragraph block \u2014 puts AI / remove controls in a header above a full-width textarea. */
+.paragraph-row { margin-bottom: 0.75rem; }
+.paragraph-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.paragraph-row__label { font-size: 0.78rem; color: var(--adm-text-muted); }
+.paragraph-row__actions { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* Inline AI button beside a textarea field. */
+.field-with-ai { display: flex; align-items: flex-start; gap: 0.5rem; }
+.field-with-ai > .ta-field { flex: 1; min-width: 0; }
+
+/* Favicon picker row. */
+.favicon-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+.favicon-thumb {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 6px;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-border);
+  object-fit: contain;
+  padding: 2px;
+  box-sizing: border-box;
+}
+.favicon-thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: var(--adm-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Gallery actions row \u2014 add slot + bulk upload side-by-side. */
+.gallery-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem; flex-wrap: wrap; }
+.file-btn--accent { border-color: var(--adm-accent); color: var(--adm-accent); }
+.file-btn--accent:hover { background: var(--adm-accent-glow); }
 .btn-add {
   font-size: 0.8rem;
   color: var(--adm-accent);
