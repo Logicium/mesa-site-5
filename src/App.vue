@@ -12,7 +12,7 @@ import AppLoader from '@apotome/archetype-shared/components/AppLoader.vue'
 import ThemeSwitcher from '@apotome/archetype-shared/components/ThemeSwitcher.vue'
 
 const { initFromConfig } = useSiteTheme()
-const { isReady, preloadCritical } = useImagePreload()
+const { isReady, progress, loaded, total, label, preloadCritical } = useImagePreload()
 
 onMounted(async () => {
   initFromConfig(siteConfig, 'dine')
@@ -40,7 +40,7 @@ const navLinks = computed(() => {
 </script>
 
 <template>
-  <AppLoader :brand="siteConfig.brand" :visible="!isReady" />
+  <AppLoader :brand="siteConfig.brand" :visible="!isReady" :progress="progress" :loaded="loaded" :total="total" :label="label" />
   <AppHeader
     :brand="siteConfig.brand"
     :tagline="siteConfig.tagline"
