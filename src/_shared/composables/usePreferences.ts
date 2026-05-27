@@ -11,9 +11,12 @@ const STORAGE_KEY = 'archetype_prefs_v1'
 
 type Prefs = {
   themePickerVisible: 'auto' | 'on' | 'off'
+  /** When true the theme picker pushes every change to the server immediately;
+   *  when false the owner has to hit the Save button. */
+  themeAutosave: boolean
 }
 
-const DEFAULTS: Prefs = { themePickerVisible: 'auto' }
+const DEFAULTS: Prefs = { themePickerVisible: 'auto', themeAutosave: true }
 
 function load(): Prefs {
   try {
@@ -59,9 +62,14 @@ export function usePreferences() {
     state.value = { ...state.value, themePickerVisible: mode }
   }
 
+  function setThemeAutosave(on: boolean) {
+    state.value = { ...state.value, themeAutosave: on }
+  }
+
   return {
     state,
     themePickerVisible,
     setThemePickerVisibility,
+    setThemeAutosave,
   }
 }
