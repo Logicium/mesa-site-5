@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { contentClient } from './contentClient'
-import { PLATFORM_ENABLED, PLATFORM_SITE_KEY } from './config'
+import { PLATFORM_ENABLED, PLATFORM_SITE_KEY, PLATFORM_SITE_ID, PLATFORM_SLUG } from './config'
 
 function deepMerge<T>(base: T, override: unknown): T {
   if (override === null || override === undefined) return base
@@ -69,15 +69,19 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   }
 
   async function loadGoogleReviews() {
-    if (!isPlatform.value || googleReviewsLoaded.value) return
+    if (!isPlatform.value) return
     try {
       const list = await contentClient.fetchReviews()
-      googleReviews.value = list.map(r => ({
-        quote: r.text,
-        author: r.author,
-        source: r.source || 'Google',
-        rating: r.rating,
-      }))
+      // Public site only shows reviews that actually have substance: at least
+      // four stars and a non-empty body. Anything else feels like clutter.
+      googleReviews.value = list
+        .filter(r => (r.rating ?? 0) >= 4 && !!r.text && r.text.trim().length > 0)
+        .map(r => ({
+          quote: r.text,
+          author: r.author,
+          source: r.source || 'Google',
+          rating: r.rating,
+        }))
       googleReviewsLoaded.value = true
     } catch { /* ignore — testimonials remain the fallback */ }
   }
@@ -89,6 +93,7 @@ export const useSiteContentStore = defineStore('siteContent', () => {
       const res = await contentClient.fetchContent()
       config.value = deepMerge(config.value, res.content)
       hydrated.value = true
+      applyFavicon()
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e)
       // swallow — fall back to build-time config
@@ -97,23 +102,48 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     }
   }
 
+  /**
+   * Swap the document's `<link rel="icon">` if the published config defines a
+   * custom favicon URL. Runs after hydrate so visitors always see the owner's
+   * latest tab icon without needing a per-template touch.
+   */
+  function applyFavicon() {
+    if (typeof document === 'undefined') return
+    const cfg = config.value as { favicon?: string; brand?: { favicon?: string } } | null
+    const url = cfg?.favicon || cfg?.brand?.favicon
+    if (!url) return
+    let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = url
+  }
+
   // Whenever the public site is configured for Google reviews, fetch them once.
   watch(reviewsSource, (s) => {
     if (s === 'google') void loadGoogleReviews()
   }, { immediate: true })
 
   /**
-   * Look up the site row whose slug matches PLATFORM_SITE_KEY. Used by the
-   * public-site ThemeSwitcher to publish theme changes back to the owner's
-   * site without needing the admin layout / activeSiteStore.
+   * Resolve this deployment's site row id from the backend so the
+   * ThemeSwitcher can call the owner-scoped admin endpoints. We prefer the
+   * immutable UUID injected at build time (`PLATFORM_SITE_ID`) and fall back
+   * to a slug lookup for sites deployed before the ID switchover.
    */
   async function resolveOwnedSiteId(): Promise<string | null> {
     if (ownedSiteId.value) return ownedSiteId.value
     if (!isPlatform.value) return null
+    // Fast path: the provisioner injects the row's UUID directly, no list call.
+    if (PLATFORM_SITE_ID) {
+      ownedSiteId.value = PLATFORM_SITE_ID
+      return ownedSiteId.value
+    }
     if (!ownedSiteLookup) {
       ownedSiteLookup = contentClient.listSites()
         .then(sites => {
-          const match = sites.find(s => s.slug === PLATFORM_SITE_KEY)
+          const match = sites.find(s => s.id === PLATFORM_SITE_KEY || s.slug === PLATFORM_SITE_KEY || s.slug === PLATFORM_SLUG)
           ownedSiteId.value = match?.id ?? null
           return ownedSiteId.value
         })
@@ -130,7 +160,7 @@ export const useSiteContentStore = defineStore('siteContent', () => {
    */
   async function saveThemePatch(patch: Record<string, unknown>): Promise<void> {
     const id = await resolveOwnedSiteId()
-    if (!id) return
+    if (!id) throw new Error('Could not resolve site id for this deployment')
     const draft = await contentClient.getDraft(id).catch(() => null)
     const base = (draft?.payload ?? {}) as Record<string, unknown>
     const merged: Record<string, unknown> = { ...base }
