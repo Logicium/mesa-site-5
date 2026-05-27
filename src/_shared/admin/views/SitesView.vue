@@ -54,13 +54,19 @@ const PHASE_PERCENT: Record<DeployPhase, number> = {
   UNKNOWN: 5, QUEUED: 10, INITIALIZING: 25, BUILDING: 55, UPLOADING: 80, DEPLOYING: 92, READY: 100, ERROR: 100, CANCELED: 100,
 }
 
-function startDeployTracking(siteId: string, deploymentId: string | null, initialLabel = 'Starting…') {
+function startDeployTracking(
+  siteId: string,
+  deploymentId: string | null,
+  initialLabel = 'Starting…',
+  priorDeploymentId: string | null = null,
+) {
   // Cancel any previous tracker for this site
   stopDeployTracking(siteId)
+  const startedAt = Date.now()
   deployProgress.value[siteId] = {
     state: 'UNKNOWN',
     deploymentId,
-    startedAt: Date.now(),
+    startedAt,
     label: initialLabel,
     percent: 5,
     failed: false,
@@ -71,6 +77,33 @@ function startDeployTracking(siteId: string, deploymentId: string | null, initia
       const state = (status.state || 'UNKNOWN') as DeployPhase
       const prev = deployProgress.value[siteId]
       if (!prev) return
+
+      // Guard against showing READY for a deployment that finished BEFORE the
+      // user clicked Update/Redeploy. This happens when the worker hasn't yet
+      // triggered the new build, so Vercel returns the previous (already-live)
+      // deployment. We only honor READY once Vercel reports a deployment whose
+      // id differs from the prior one AND whose createdAt is after startedAt.
+      const isStaleDeploy =
+        (state === 'READY' || state === 'DEPLOYING' || state === 'UPLOADING') &&
+        (
+          (priorDeploymentId != null && status.deploymentId === priorDeploymentId) ||
+          (status.createdAt != null && status.createdAt < startedAt)
+        )
+
+      if (isStaleDeploy) {
+        deployProgress.value[siteId] = {
+          ...prev,
+          state: 'UNKNOWN',
+          // Don't latch onto the stale deploymentId — keep polling "latest".
+          deploymentId: prev.deploymentId,
+          label: 'Waiting for new deployment to start…',
+          percent: Math.max(prev.percent, 8),
+          failed: false,
+        }
+        deployTimers[siteId] = setTimeout(tick, 3_000)
+        return
+      }
+
       deployProgress.value[siteId] = {
         ...prev,
         state,
@@ -176,10 +209,17 @@ async function refreshScreenshot(siteId: string) {
 async function redeploy(siteId: string) {
   redeploying.value[siteId] = true
   redeployMsg.value[siteId] = ''
+  // Snapshot the currently-live deployment so the tracker can ignore it and
+  // wait for the genuinely new deployment to land before showing READY.
+  let priorId: string | null = null
+  try {
+    const cur = await contentClient.getDeploymentStatus(siteId)
+    priorId = cur.deploymentId
+  } catch { /* non-fatal */ }
   try {
     const r = await contentClient.redeploySite(siteId)
     redeployMsg.value[siteId] = `Triggered (${r.deploymentId.slice(0, 12)}\u2026)`
-    startDeployTracking(siteId, r.deploymentId, 'Redeploy queued')
+    startDeployTracking(siteId, r.deploymentId, 'Redeploy queued', priorId)
   } catch (e) {
     redeployMsg.value[siteId] = e instanceof Error ? e.message : String(e)
   } finally {
@@ -202,12 +242,20 @@ async function checkUpdate(siteId: string) {
 async function updateNow(siteId: string) {
   updating.value[siteId] = true
   updateMsg.value[siteId] = ''
+  // Snapshot the latest deployment so the tracker knows to ignore it while the
+  // worker is still syncing template files into the repo. Without this guard
+  // the poller sees the previous READY deployment and reports "Live" instantly.
+  let priorId: string | null = null
+  try {
+    const cur = await contentClient.getDeploymentStatus(siteId)
+    priorId = cur.deploymentId
+  } catch { /* non-fatal */ }
   try {
     const r = await contentClient.updateSite(siteId)
     updateMsg.value[siteId] = `Update queued (${r.jobId})`
     // Update is async (worker syncs template files then redeploys). Start tracking;
-    // the poller will discover the new deployment id on its first tick.
-    startDeployTracking(siteId, null, 'Syncing template files\u2026')
+    // the poller will discover the new deployment id on its first non-stale tick.
+    startDeployTracking(siteId, null, 'Syncing template files\u2026', priorId)
   } catch (e) {
     updateMsg.value[siteId] = e instanceof Error ? e.message : String(e)
   } finally {
