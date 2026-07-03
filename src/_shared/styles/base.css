@@ -98,6 +98,13 @@ button { font: inherit; cursor: pointer; }
   margin: 0 auto;
   padding: 0 clamp(1rem, 4vw, 2.5rem);
 }
+/* Footer gutters: template theme files re-set `padding` shorthands on the
+   footer blocks (grid / minimal / stage / base bar), which wipes the inline
+   padding .ap-container provides and leaves footer text flush with the
+   viewport edge. Re-assert the gutter with a longhand that outranks those
+   shorthands (element+class specificity, !important beats the style-2
+   `padding: … !important` grid rule). Vertical rhythm stays theirs. */
+footer.ap-footer .ap-container { padding-inline: clamp(1rem, 4vw, 2.5rem) !important; }
 .ap-section {
   padding-top: var(--ap-section-py);
   padding-bottom: var(--ap-section-py);
