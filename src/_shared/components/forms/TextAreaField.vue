@@ -2,7 +2,9 @@
 import { computed } from 'vue'
 
 const props = withDefaults(defineProps<{
-  modelValue: string
+  // Accept undefined so call sites can bind optional fields directly without
+  // forcing every parent to coalesce. The template guards with `?? ''`.
+  modelValue: string | undefined
   rows?: number
   maxlength?: number
   placeholder?: string
