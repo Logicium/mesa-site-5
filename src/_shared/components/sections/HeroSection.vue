@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, useTemplateRef } from 'vue'
 import OptimizedImage from '../OptimizedImage.vue'
 
 defineProps<{
@@ -14,6 +15,33 @@ defineProps<{
   /** When true, this is a subpage hero header — uses data-subhero-style for layout selection. */
   subpage?: boolean
 }>()
+
+// Scroll-driven parallax for the home hero. Sets --ap-hero-parallax-y
+// on the hero element so themes (notably Float, style 6) can translate
+// their image / card on scroll without re-rendering anything.
+const heroEl = useTemplateRef<HTMLElement>('heroEl')
+let rafId: number | null = null
+function onScroll() {
+  if (!heroEl.value || rafId !== null) return
+  rafId = requestAnimationFrame(() => {
+    rafId = null
+    const el = heroEl.value
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const h = rect.height || 1
+    // Progress from -1 (hero fully below fold) to 1 (hero scrolled past top)
+    const progress = Math.max(-1, Math.min(1, -rect.top / h))
+    el.style.setProperty('--ap-hero-parallax-y', `${(progress * 60).toFixed(1)}px`)
+  })
+}
+onMounted(() => {
+  window.addEventListener('scroll', onScroll, { passive: true })
+  onScroll()
+})
+onUnmounted(() => {
+  window.removeEventListener('scroll', onScroll)
+  if (rafId !== null) cancelAnimationFrame(rafId)
+})
 </script>
 
 <!--
@@ -97,7 +125,7 @@ defineProps<{
   </section>
 
   <!-- ── Default home hero (existing behavior) ── -->
-  <section v-else class="ap-hero" :class="`ap-hero--${layout || 'split'}`">
+  <section v-else ref="heroEl" class="ap-hero" :class="`ap-hero--${layout || 'split'}`">
     <div class="ap-hero__deco" aria-hidden="true"></div>
     <div class="ap-container ap-hero__inner">
       <div class="ap-hero__content">
