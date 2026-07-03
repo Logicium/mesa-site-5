@@ -41,7 +41,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const contentClient = {
   // --- Public (no auth) ---
   fetchContent: () =>
-    request<{ slug: string; archetype: string; plan: string; content: Record<string, unknown> }>(
+    request<{ slug: string; archetype: string; plan: string; addOns?: string[]; content: Record<string, unknown> }>(
       'GET',
       `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/content`,
     ),
@@ -51,10 +51,17 @@ export const contentClient = {
       `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/reviews`,
     ).catch(() => [] as Array<{ rating: number; author: string; text: string; source: string }>),
   fetchInstagram: () =>
-    request<{ media: Array<{ id: string; media_url: string; permalink: string; caption?: string }> }>(
+    request<{ media: InstagramMediaDTO[] }>(
       'GET',
       `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/instagram`,
     ).catch(() => ({ media: [] })),
+  /** Same feed, for an explicit site id/slug (admin preview). Cache-busted so
+      a just-connected account shows immediately despite the 15-min public cache. */
+  fetchInstagramFor: (key: string) =>
+    request<{ media: InstagramMediaDTO[] }>(
+      'GET',
+      `/sites/${encodeURIComponent(key)}/instagram?ts=${Date.now()}`,
+    ),
   submitForm: (type: 'contact' | 'newsletter', fields: Record<string, string>, captcha?: string) =>
     request<{ ok: true }>('POST', `/sites/${encodeURIComponent(PLATFORM_SITE_KEY)}/submissions`, {
       type,
@@ -90,7 +97,7 @@ export const contentClient = {
   },
 
   // --- Admin ---
-  listSites: (opts: { includeDeactivated?: boolean } = {}) => request<Array<{ id: string; slug: string; displayName: string | null; archetype: string; status: string; productionUrl?: string; customDomain?: string; deactivatedAt?: string | null }>>('GET', `/admin/sites${opts.includeDeactivated ? '?includeDeactivated=1' : ''}`),
+  listSites: (opts: { includeDeactivated?: boolean } = {}) => request<Array<{ id: string; slug: string; displayName: string | null; archetype: string; status: string; productionUrl?: string; customDomain?: string; deactivatedAt?: string | null; screenshotUrl?: string | null; screenshotCapturedAt?: string | null; addOns?: string[] }>>('GET', `/admin/sites${opts.includeDeactivated ? '?includeDeactivated=1' : ''}`),
   renameSite: (siteId: string, displayName: string) => request<{ id: string; displayName: string | null }>('PUT', `/admin/sites/${siteId}`, { displayName }),
   deactivateSite: (siteId: string) => request<{ id: string; deactivatedAt: string }>('POST', `/admin/sites/${siteId}/deactivate`),
   activateSite: (siteId: string) => request<{ id: string; deactivatedAt: string | null }>('POST', `/admin/sites/${siteId}/activate`),
@@ -112,13 +119,25 @@ export const contentClient = {
   listAdminReviews: (siteId: string) => request<Array<{ id: string; rating: number; author: string; text: string; source: string; fetchedAt: string }>>('GET', `/admin/sites/${siteId}/reviews`),
 
   getInstagramConnect: (siteId: string) => request<{ url: string }>('GET', `/admin/sites/${siteId}/instagram/connect`),
+  getInstagramStatus: (siteId: string) => request<{ connected: boolean; expiresAt: string | null }>('GET', `/admin/sites/${siteId}/instagram/status`),
   disconnectInstagram: (siteId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/instagram/disconnect`),
 
-  requestDomain: (siteId: string, domain: string) => request<{ domain: string; dns: { instructions: Array<{ type: string; name: string; value: string; note: string }> } }>('POST', `/admin/sites/${siteId}/domain`, { domain }),
-  verifyDomain: (siteId: string) => request<{ ok: boolean }>('POST', `/admin/sites/${siteId}/domain/verify`),
-  getDomain: (siteId: string) => request<{ domain?: string; token?: string }>('GET', `/admin/sites/${siteId}/domain`),
+  requestDomain: (siteId: string, domain: string) => request<{ domain: string; dns: DnsInstructionsDTO }>('POST', `/admin/sites/${siteId}/domain`, { domain }),
+  verifyDomain: (siteId: string) => request<{
+    ok: boolean
+    apex: { domain: string; configured: boolean }
+    www: { domain: string; configured: boolean }
+  }>('POST', `/admin/sites/${siteId}/domain/verify`),
+  getDomain: (siteId: string) => request<{ domain?: string; dns?: DnsInstructionsDTO }>('GET', `/admin/sites/${siteId}/domain`),
 
   getAnalytics: (siteId: string) => request<Array<{ date: string; visitors: number; pageviews: number; uptimeLatencyMs: number; uptimeError?: string }>>('GET', `/admin/sites/${siteId}/analytics`),
+
+  // --- Payments (owner-scoped: Stripe Connect + Plaid) ---
+  getPaymentsStatus: () => request<PaymentsStatusDTO>('GET', '/admin/payments/status'),
+  connectPayments: (returnTo?: string) => request<{ url: string }>('POST', '/admin/payments/connect', { returnTo }),
+  createPlaidLinkToken: () => request<{ linkToken: string }>('POST', '/admin/payments/plaid/link-token'),
+  exchangePlaidToken: (publicToken: string, accountId: string) =>
+    request<{ ok: true; bank: { name: string; mask: string | null } }>('POST', '/admin/payments/plaid/exchange', { publicToken, accountId }),
 
   generateCopy: (siteId: string, field: string, prompt: string, context?: Record<string, unknown>) =>
     request<{ options: string[] }>('POST', `/admin/sites/${siteId}/ai/copy`, { field, prompt, context }),
@@ -181,9 +200,15 @@ export const contentClient = {
   /** URL of the cached screenshot PNG for a site. Pass fresh=true to force recapture. */
   screenshotUrl: (siteId: string, fresh = false) => `${PLATFORM_API}/admin/sites/${siteId}/screenshot${fresh ? '?fresh=1' : ''}`,
 
+  /** Returns the persisted screenshot metadata `{ url, capturedAt, sourceUrl }` for a site. */
+  getScreenshot: (siteId: string) => request<{ url: string | null; capturedAt: string | null; sourceUrl: string | null }>('GET', `/admin/sites/${siteId}/screenshot`),
+
+  /** Triggers a fresh capture of the site's current production URL, persists the result, returns the new metadata. */
+  refreshScreenshot: (siteId: string) => request<{ url: string | null; capturedAt: string | null; sourceUrl: string | null; error?: string }>('POST', `/admin/sites/${siteId}/screenshot/refresh`),
+
   // --- Orders / checkout (public) ---
   createOrder: (payload: {
-    archetype: 'mesa' | 'hearth' | 'vault' | 'keystone' | 'keystone'
+    archetype: 'mesa' | 'hearth' | 'vault' | 'keystone' | 'marquee'
     plan: string
     addOns: string[]
     wizardPayload: Record<string, unknown>
@@ -205,4 +230,518 @@ export const contentClient = {
       body: JSON.stringify(payload),
     }).then(r => r.ok ? r.json() as Promise<{ text: string }> : Promise.resolve({ text: '' }))
   },
+
+  // --- Bookings (public) ---
+  bookingAvailability: (siteSlug: string, type: string) =>
+    request<{
+      slots: string[]
+      durationMinutes: number
+      timezone: string
+      enabledTypes: string[]
+      services?: Array<{ id: string; label: string; description?: string; durationMinutes: number }>
+    }>('GET', `/bookings/availability?siteSlug=${encodeURIComponent(siteSlug)}&type=${encodeURIComponent(type)}`),
+  createBooking: (payload: {
+    siteSlug: string
+    type: string
+    name: string
+    email: string
+    phone?: string
+    notes?: string
+    scheduledAt: string
+    timezone?: string
+  }) => request<{
+    id: string
+    type: string
+    serviceId?: string | null
+    serviceLabel?: string | null
+    name: string
+    email: string
+    scheduledAt: string
+    durationMinutes: number
+    timezone?: string
+    status: 'confirmed' | 'cancelled'
+    cancelToken: string
+    icsUrl: string
+  }>('POST', '/bookings', payload),
+
+  // --- Admin: Appointments (Keystone add-on) ---
+  listSiteBookings: (siteId: string) =>
+    request<Array<{ id: string; type: string; serviceId?: string | null; serviceLabel?: string | null; name: string; email: string; phone?: string; notes?: string; scheduledAt: string; durationMinutes: number; timezone?: string; status: string; siteSlug: string }>>(
+      'GET',
+      `/admin/sites/${siteId}/bookings`,
+    ),
+  adminCancelBooking: (bookingId: string) =>
+    request<{ id: string; status: string }>('DELETE', `/admin/bookings/${bookingId}`),
+  getBookingConfig: (siteId: string) =>
+    request<{
+      override: BookingConfigDTO | null
+      resolved: Required<BookingConfigDTO>
+    }>('GET', `/admin/sites/${siteId}/booking-config`),
+  saveBookingConfig: (siteId: string, config: BookingConfigDTO | null) =>
+    request<{ override: BookingConfigDTO | null; resolved: Required<BookingConfigDTO> }>(
+      'PUT',
+      `/admin/sites/${siteId}/booking-config`,
+      { config },
+    ),
+  setSiteAddOn: (siteId: string, addOn: string, enabled: boolean) =>
+    request<{ addOns: string[] }>('POST', `/admin/sites/${siteId}/addons`, { addOn, enabled }),
+
+  // --- Lodging / Reservations (Hearth add-on) ---
+  lodgingAvailability: (siteSlug: string, checkIn: string, checkOut: string, partySize: number) =>
+    request<{
+      checkIn: string
+      checkOut: string
+      nights: number
+      timezone: string
+      currency: string
+      checkInTime?: string
+      checkOutTime?: string
+      rooms: Array<{
+        id: string
+        label: string
+        description?: string
+        capacity: number
+        imageUrl?: string
+        nightlyRateCents?: number
+        totalCents?: number
+        available: boolean
+      }>
+    }>(
+      'GET',
+      `/reservations/availability?siteSlug=${encodeURIComponent(siteSlug)}&checkIn=${checkIn}&checkOut=${checkOut}&partySize=${partySize}`,
+    ),
+  createReservation: (payload: {
+    siteSlug: string
+    roomId: string
+    checkIn: string
+    checkOut: string
+    partySize: number
+    name: string
+    email: string
+    phone?: string
+    notes?: string
+  }) => request<ReservationDTO>('POST', '/reservations', payload),
+  listSiteReservations: (siteId: string) =>
+    request<ReservationDTO[]>('GET', `/admin/sites/${siteId}/reservations`),
+  adminCancelReservation: (siteId: string, reservationId: string) =>
+    request<ReservationDTO>('DELETE', `/admin/sites/${siteId}/reservations/${reservationId}`),
+  getLodgingConfig: (siteId: string) =>
+    request<{ override: LodgingConfigDTO | null; resolved: Required<LodgingConfigDTO> }>(
+      'GET', `/admin/sites/${siteId}/lodging-config`,
+    ),
+  saveLodgingConfig: (siteId: string, config: LodgingConfigDTO | null) =>
+    request<{ override: LodgingConfigDTO | null; resolved: Required<LodgingConfigDTO> }>(
+      'PUT', `/admin/sites/${siteId}/lodging-config`, { config },
+    ),
+
+  // --- Shop (Vault E-Shop add-on) ---
+  shopListProducts: (siteSlug: string) =>
+    request<{
+      currency: string
+      fulfillment: Array<'pickup' | 'shipping'>
+      shippingFlatCents: number
+      products: ShopProductDTO[]
+    }>('GET', `/shop/products?siteSlug=${encodeURIComponent(siteSlug)}`),
+  shopCreateOrder: (payload: {
+    siteSlug: string
+    name: string
+    email: string
+    phone?: string
+    notes?: string
+    fulfillment: 'pickup' | 'shipping'
+    shippingAddress?: ShippingAddressDTO
+    items: Array<{ productId: string; quantity: number }>
+  }) => request<ShopOrderDTO>('POST', '/shop/orders', payload),
+  /** Create a pending order + Stripe Checkout session (destination charge to the owner). */
+  shopCheckout: (payload: {
+    siteSlug: string
+    name: string
+    email: string
+    phone?: string
+    notes?: string
+    fulfillment: 'pickup' | 'shipping'
+    shippingAddress?: ShippingAddressDTO
+    items: Array<{ productId: string; quantity: number }>
+  }) => request<{ orderId: string; checkoutUrl: string | null; order: ShopOrderDTO }>('POST', '/shop/checkout', payload),
+  shopConfirmOrder: (id: string) => request<ShopOrderDTO>('POST', `/shop/orders/${id}/confirm`),
+  shopGetOrder: (id: string) => request<ShopOrderDTO>('GET', `/shop/orders/${id}`),
+  shopListSiteProducts: (siteId: string) =>
+    request<ShopProductDTO[]>('GET', `/admin/sites/${siteId}/products`),
+  shopCreateProduct: (siteId: string, input: ShopProductInput) =>
+    request<ShopProductDTO>('POST', `/admin/sites/${siteId}/products`, input),
+  shopUpdateProduct: (siteId: string, productId: string, input: Partial<ShopProductInput>) =>
+    request<ShopProductDTO>('PATCH', `/admin/sites/${siteId}/products/${productId}`, input),
+  shopDeleteProduct: (siteId: string, productId: string) =>
+    request<{ ok: true }>('DELETE', `/admin/sites/${siteId}/products/${productId}`),
+  shopListOrders: (siteId: string) =>
+    request<ShopOrderDTO[]>('GET', `/admin/sites/${siteId}/shop-orders`),
+  shopUpdateOrder: (siteId: string, orderId: string, status: ShopOrderDTO['status']) =>
+    request<ShopOrderDTO>('PATCH', `/admin/sites/${siteId}/shop-orders/${orderId}`, { status }),
+  getShopConfig: (siteId: string) =>
+    request<{ override: ShopConfigDTO | null; resolved: Required<ShopConfigDTO> }>(
+      'GET', `/admin/sites/${siteId}/shop-config`,
+    ),
+  saveShopConfig: (siteId: string, config: ShopConfigDTO | null) =>
+    request<{ override: ShopConfigDTO | null; resolved: Required<ShopConfigDTO> }>(
+      'PUT', `/admin/sites/${siteId}/shop-config`, { config },
+    ),
+
+  // --- Ordering (Mesa Meal Ordering add-on) ---
+  orderingMenu: (siteSlug: string) =>
+    request<{
+      currency: string
+      categories: string[]
+      items: MenuItemDTO[]
+    }>('GET', `/ordering/menu?siteSlug=${encodeURIComponent(siteSlug)}`),
+  orderingSlots: (siteSlug: string) =>
+    request<{
+      timezone: string
+      currency: string
+      slotMinutes: number
+      slots: string[]
+    }>('GET', `/ordering/slots?siteSlug=${encodeURIComponent(siteSlug)}`),
+  orderingCreateOrder: (payload: {
+    siteSlug: string
+    name: string
+    email: string
+    phone?: string
+    notes?: string
+    pickupAt: string
+    items: Array<{ menuItemId: string; quantity: number; notes?: string }>
+  }) => request<MealOrderDTO>('POST', '/ordering/orders', payload),
+  orderingGetOrder: (id: string) => request<MealOrderDTO>('GET', `/ordering/orders/${id}`),
+  orderingListSiteMenu: (siteId: string) =>
+    request<MenuItemDTO[]>('GET', `/admin/sites/${siteId}/menu-items`),
+  orderingCreateMenuItem: (siteId: string, input: MenuItemInput) =>
+    request<MenuItemDTO>('POST', `/admin/sites/${siteId}/menu-items`, input),
+  orderingUpdateMenuItem: (siteId: string, itemId: string, input: Partial<MenuItemInput>) =>
+    request<MenuItemDTO>('PATCH', `/admin/sites/${siteId}/menu-items/${itemId}`, input),
+  orderingDeleteMenuItem: (siteId: string, itemId: string) =>
+    request<{ ok: true }>('DELETE', `/admin/sites/${siteId}/menu-items/${itemId}`),
+  orderingListOrders: (siteId: string) =>
+    request<MealOrderDTO[]>('GET', `/admin/sites/${siteId}/meal-orders`),
+  orderingUpdateOrder: (siteId: string, orderId: string, status: MealOrderDTO['status']) =>
+    request<MealOrderDTO>('PATCH', `/admin/sites/${siteId}/meal-orders/${orderId}`, { status }),
+  getOrderingConfig: (siteId: string) =>
+    request<{ override: OrderingConfigDTO | null; resolved: Required<OrderingConfigDTO> }>(
+      'GET', `/admin/sites/${siteId}/ordering-config`,
+    ),
+  saveOrderingConfig: (siteId: string, config: OrderingConfigDTO | null) =>
+    request<{ override: OrderingConfigDTO | null; resolved: Required<OrderingConfigDTO> }>(
+      'PUT', `/admin/sites/${siteId}/ordering-config`, { config },
+    ),
+
+  // --- Ticketing (Marquee Events add-on) — public ---
+  ticketingListEvents: (siteSlug: string) =>
+    request<EventDTO[]>('GET', `/ticketing/events?siteSlug=${encodeURIComponent(siteSlug)}`),
+  ticketingGetEvent: (siteSlug: string, eventId: string) =>
+    request<EventDTO>('GET', `/ticketing/events/${eventId}?siteSlug=${encodeURIComponent(siteSlug)}`),
+  ticketingPurchase: (payload: {
+    siteSlug: string
+    eventId: string
+    name: string
+    email: string
+    phone?: string
+    items: Array<{ tierId: string; quantity: number }>
+  }) => request<TicketOrderDTO>('POST', '/ticketing/purchase', payload),
+  ticketingGetOrder: (orderId: string) =>
+    request<TicketOrderDTO>('GET', `/ticketing/orders/${orderId}`),
+  ticketingCancelByToken: (ticketId: string, token: string) =>
+    request<TicketDTO>('GET', `/ticketing/tickets/${ticketId}/cancel?token=${encodeURIComponent(token)}`),
+
+  // --- Admin: Ticketing (Marquee Events add-on) ---
+  ticketingListSiteEvents: (siteId: string) =>
+    request<EventDTO[]>('GET', `/admin/sites/${siteId}/events`),
+  ticketingCreateEvent: (siteId: string, input: EventInput) =>
+    request<EventDTO>('POST', `/admin/sites/${siteId}/events`, input),
+  ticketingUpdateEvent: (siteId: string, eventId: string, input: Partial<EventInput>) =>
+    request<EventDTO>('PUT', `/admin/sites/${siteId}/events/${eventId}`, input),
+  ticketingDeleteEvent: (siteId: string, eventId: string) =>
+    request<{ ok: true }>('DELETE', `/admin/sites/${siteId}/events/${eventId}`),
+  ticketingListEventTickets: (siteId: string, eventId: string) =>
+    request<TicketDTO[]>('GET', `/admin/sites/${siteId}/events/${eventId}/tickets`),
+  ticketingCancelTicket: (siteId: string, ticketId: string) =>
+    request<TicketDTO>('DELETE', `/admin/sites/${siteId}/tickets/${ticketId}`),
+  ticketingCheckIn: (siteId: string, ticketId: string) =>
+    request<TicketDTO>('PATCH', `/admin/sites/${siteId}/tickets/${ticketId}/check-in`),
+}
+
+export interface DnsInstructionsDTO {
+  instructions: Array<{ type: string; name: string; value: string; note: string }>
+}
+
+export interface InstagramMediaDTO {
+  id: string
+  media_url: string
+  permalink: string
+  caption?: string
+}
+
+export interface PaymentsStatusDTO {
+  stripeConfigured: boolean
+  plaidConfigured: boolean
+  connected: boolean
+  chargesEnabled: boolean
+  payoutsEnabled: boolean
+  detailsSubmitted: boolean
+  bank: { name: string; mask: string | null } | null
+}
+
+export interface BookingServiceDTO {
+  id: string
+  label: string
+  description?: string
+  durationMinutes: number
+}
+
+export interface BookingConfigDTO {
+  timezone?: string
+  hours?: Record<number, string[]>
+  slotMinutes?: number
+  durations?: Record<string, number>
+  minLeadHours?: number
+  windowDays?: number
+  enabledTypes?: string[]
+  services?: BookingServiceDTO[]
+}
+
+export interface LodgingRoomDTO {
+  id: string
+  label: string
+  description?: string
+  capacity: number
+  nightlyRateCents?: number
+  imageUrl?: string
+}
+
+export interface LodgingConfigDTO {
+  timezone?: string
+  currency?: string
+  minNights?: number
+  maxNights?: number
+  windowDays?: number
+  checkInTime?: string
+  checkOutTime?: string
+  rooms?: LodgingRoomDTO[]
+}
+
+export interface ReservationDTO {
+  id: string
+  roomId: string
+  roomLabel: string
+  checkIn: string
+  checkOut: string
+  nights: number
+  partySize: number
+  name: string
+  email: string
+  phone?: string
+  notes?: string
+  totalCents?: number
+  currency?: string
+  status: 'confirmed' | 'cancelled'
+  cancelToken: string
+}
+
+export interface ShopProductDTO {
+  id: string
+  sku: string
+  name: string
+  description?: string
+  priceCents: number
+  currency: string
+  imageUrl?: string
+  inventory: number
+  active: boolean
+  sortOrder: number
+}
+
+export interface ShopProductInput {
+  sku: string
+  name: string
+  description?: string
+  priceCents: number
+  currency?: string
+  imageUrl?: string
+  inventory?: number
+  active?: boolean
+  sortOrder?: number
+}
+
+export interface ShippingAddressDTO {
+  line1: string
+  line2?: string
+  city: string
+  region?: string
+  postalCode: string
+  country: string
+}
+
+export interface ShopOrderItemDTO {
+  productId: string
+  sku: string
+  name: string
+  unitPriceCents: number
+  quantity: number
+  lineTotalCents: number
+}
+
+export interface ShopOrderDTO {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  notes?: string
+  fulfillment: 'pickup' | 'shipping'
+  shippingAddress?: ShippingAddressDTO
+  items: ShopOrderItemDTO[]
+  subtotalCents: number
+  shippingCents: number
+  totalCents: number
+  currency: string
+  status: 'pending' | 'paid' | 'fulfilled' | 'cancelled'
+  createdAt: string
+}
+
+export interface ShopConfigDTO {
+  currency?: string
+  fulfillment?: Array<'pickup' | 'shipping'>
+  pickupInstructions?: string
+  shippingFlatCents?: number
+  notifyEmail?: string
+}
+
+export interface MenuItemDTO {
+  id: string
+  sku: string
+  name: string
+  description?: string
+  priceCents: number
+  currency: string
+  category: string
+  imageUrl?: string
+  active: boolean
+  sortOrder: number
+}
+
+export interface MenuItemInput {
+  sku: string
+  name: string
+  description?: string
+  priceCents: number
+  currency?: string
+  category?: string
+  imageUrl?: string
+  active?: boolean
+  sortOrder?: number
+}
+
+export interface MealOrderLineDTO {
+  menuItemId: string
+  sku: string
+  name: string
+  unitPriceCents: number
+  quantity: number
+  lineTotalCents: number
+  notes?: string
+}
+
+export interface MealOrderDTO {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  notes?: string
+  pickupAt: string
+  items: MealOrderLineDTO[]
+  subtotalCents: number
+  totalCents: number
+  currency: string
+  status: 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled'
+  createdAt: string
+}
+
+export interface OrderingConfigDTO {
+  timezone?: string
+  currency?: string
+  hours?: Record<number, string[]>
+  slotMinutes?: number
+  prepMinutes?: number
+  maxOrdersPerSlot?: number
+  windowDays?: number
+  pickupInstructions?: string
+  notifyEmail?: string
+}
+
+// --- Ticketing (Marquee Events add-on) ---
+
+export type EventStatusDTO = 'draft' | 'on_sale' | 'sold_out' | 'cancelled' | 'past'
+
+export interface TicketTierDTO {
+  id: string
+  label: string
+  description?: string
+  priceCents: number
+  /** -1 = unlimited. */
+  capacity: number
+  active?: boolean
+  /** Present on server reads (admin + public event). */
+  sold?: number
+  /** -1 = unlimited. Present on server reads. */
+  remaining?: number
+}
+
+export interface EventDTO {
+  id: string
+  title: string
+  description?: string
+  startsAt: string
+  endsAt?: string
+  venue?: string
+  imageUrl?: string
+  /** -1 = unlimited. */
+  capacity: number
+  currency: string
+  status: EventStatusDTO
+  sold: number
+  tiers: TicketTierDTO[]
+}
+
+export interface EventInput {
+  title: string
+  description?: string
+  startsAt: string
+  endsAt?: string
+  venue?: string
+  imageUrl?: string
+  capacity?: number
+  currency?: string
+  tiers: TicketTierDTO[]
+  status?: EventStatusDTO
+}
+
+export interface TicketDTO {
+  id: string
+  eventId: string
+  orderId: string
+  tierId: string
+  tierLabel: string
+  unitPriceCents: number
+  currency: string
+  name: string
+  email: string
+  phone?: string
+  status: 'confirmed' | 'checked_in' | 'cancelled'
+  cancelToken?: string
+  createdAt: string
+}
+
+export interface TicketOrderDTO {
+  orderId: string
+  eventId: string
+  eventTitle: string
+  eventStartsAt?: string
+  currency: string
+  totalCents: number
+  tickets: TicketDTO[]
 }
