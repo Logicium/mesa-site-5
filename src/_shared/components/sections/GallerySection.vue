@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import OptimizedImage from '../OptimizedImage.vue'
+import { useSiteContentStore } from '../../platform/siteContentStore'
 
 interface Photo { src: string; alt?: string; caption?: string }
 
@@ -13,10 +14,36 @@ const props = defineProps<{
   /** Cap how many photos to show; rest are dropped. */
   limit?: number
   centered?: boolean
+  /** Set false to always show the build-time photos, ignoring Instagram. */
+  allowInstagram?: boolean
 }>()
 
+const content = useSiteContentStore()
+void content.loadInstagram()
+
+/** IG captions are long and hashtag-heavy — keep the first line, drop tags. */
+function cleanCaption(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const line = raw.split('\n')[0]!.replace(/#[\w]+/g, '').replace(/\s{2,}/g, ' ').trim()
+  if (!line) return undefined
+  return line.length > 90 ? `${line.slice(0, 87)}…` : line
+}
+
+/** When the owner has connected Instagram, their live feed replaces the
+    stock/build-time gallery across every layout variant. */
+const sourcePhotos = computed<Photo[]>(() => {
+  if (props.allowInstagram !== false && content.instagramMedia.length) {
+    return content.instagramMedia.map(m => ({
+      src: m.src,
+      alt: cleanCaption(m.caption) || 'Instagram post',
+      caption: cleanCaption(m.caption),
+    }))
+  }
+  return props.photos
+})
+
 const visible = computed(() =>
-  props.limit ? props.photos.slice(0, props.limit) : props.photos
+  props.limit ? sourcePhotos.value.slice(0, props.limit) : sourcePhotos.value
 )
 
 function shapeFor(i: number): 'tall' | 'wide' | 'square' {
