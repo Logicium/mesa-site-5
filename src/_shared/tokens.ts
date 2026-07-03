@@ -25,19 +25,21 @@ export type SwatchName =
   | 'midnight' | 'obsidian' | 'ember' | 'plum'
   | 'electric' | 'punch' | 'neon' | 'aurora'
 
-export type SiteVariant = 'essentials' | 'portfolio'
-export type Archetype = 'dine' | 'stay' | 'shop' | 'project' | 'utility'
+export type SiteVariant = 'essentials' | 'portfolio' | 'extended'
+export type Archetype = 'dine' | 'stay' | 'shop' | 'venue' | 'project' | 'utility'
 /** Maps an `Archetype` to its template repo key. */
-export type ArchetypeKey = 'mesa' | 'hearth' | 'vault' | 'keystone'
+export type ArchetypeKey = 'mesa' | 'hearth' | 'vault' | 'marquee' | 'keystone'
 
 export const ARCHETYPE_OF: Record<ArchetypeKey, Archetype> = {
   mesa: 'dine',
   hearth: 'stay',
   vault: 'shop',
+  marquee: 'venue',
   keystone: 'utility',
 }
 
 export const VARIANT_PHOTO_COUNT: Record<SiteVariant, { gallery: number; max: number }> = {
   essentials: { gallery: 6, max: 8 },
   portfolio: { gallery: 12, max: 16 },
+  extended: { gallery: 20, max: 28 },
 }
