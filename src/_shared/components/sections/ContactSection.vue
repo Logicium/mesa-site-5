@@ -1,5 +1,9 @@
 <script setup lang="ts">
-defineProps<{
+import { reactive, ref } from 'vue'
+import { PLATFORM_ENABLED, PLATFORM_API, PLATFORM_SITE_KEY } from '../../platform/config'
+import { contentClient } from '../../platform/contentClient'
+
+const props = defineProps<{
   eyebrow?: string
   title?: string
   intro?: string
@@ -7,8 +11,66 @@ defineProps<{
   phone?: string
   email?: string
   mapEmbedUrl?: string
+  /** When set, the form falls back to a native POST to this URL. */
   formAction?: string
 }>()
+
+/* All five style variants share one submission state — only one is visible
+   at a time (CSS-gated via data-contact-style), so their inputs mirror. */
+const fields = reactive({ occasion: '', name: '', email: '', message: '' })
+const honeypot = ref('')
+const state = ref<'idle' | 'sending' | 'sent' | 'error'>('idle')
+const sentVia = ref<'api' | 'mailto'>('api')
+const errorMsg = ref('')
+
+const canUseApi = PLATFORM_ENABLED && !!PLATFORM_API && !!PLATFORM_SITE_KEY
+
+async function onSubmit(e: Event) {
+  if (props.formAction) return // caller wants the native POST
+  e.preventDefault()
+  if (state.value === 'sending') return
+  if (honeypot.value) { state.value = 'sent'; return }
+
+  const payload: Record<string, string> = {
+    name: fields.name,
+    email: fields.email,
+    message: fields.message,
+  }
+  if (fields.occasion) payload.occasion = fields.occasion
+
+  if (canUseApi) {
+    state.value = 'sending'
+    errorMsg.value = ''
+    try {
+      await contentClient.submitForm('contact', payload)
+      sentVia.value = 'api'
+      state.value = 'sent'
+    } catch {
+      state.value = 'error'
+      errorMsg.value = props.email
+        ? `Something went wrong sending your message. Please try again, or email us at ${props.email}.`
+        : 'Something went wrong sending your message. Please try again in a moment.'
+    }
+    return
+  }
+
+  // Static build (no platform backend): hand off to the visitor's mail app
+  // so the form never dead-ends on an error page.
+  if (props.email) {
+    const subject = encodeURIComponent(`Website enquiry from ${fields.name || 'a visitor'}`)
+    const body = encodeURIComponent(
+      [fields.occasion && `Occasion: ${fields.occasion}`, fields.message, '', `— ${fields.name} (${fields.email})`]
+        .filter(Boolean)
+        .join('\n'),
+    )
+    window.location.href = `mailto:${props.email}?subject=${subject}&body=${body}`
+    sentVia.value = 'mailto'
+    state.value = 'sent'
+  } else {
+    state.value = 'error'
+    errorMsg.value = 'This form is not connected yet — please reach us by phone or email instead.'
+  }
+}
 </script>
 
 <!--
@@ -39,17 +101,25 @@ defineProps<{
           <iframe :src="mapEmbedUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade" />
         </div>
       </div>
-      <form class="ap-contact__form" :action="formAction" method="post">
-        <div class="ap-field"><label for="ap-occasion-1">Occasion</label>
-          <select id="ap-occasion-1" name="occasion" class="ap-input">
-            <option value="">— Select —</option><option>Reservation</option>
-            <option>Private dining</option><option>Special event</option><option>General enquiry</option>
-          </select>
+      <form class="ap-contact__form" :action="formAction" method="post" @submit="onSubmit">
+        <template v-if="state !== 'sent'">
+          <div class="ap-field"><label for="ap-occasion-1">Occasion</label>
+            <select id="ap-occasion-1" v-model="fields.occasion" name="occasion" class="ap-input">
+              <option value="">— Select —</option><option>Reservation</option>
+              <option>Private dining</option><option>Special event</option><option>General enquiry</option>
+            </select>
+          </div>
+          <div class="ap-field"><label for="ap-name-1">Name</label><input id="ap-name-1" v-model="fields.name" name="name" required class="ap-input" /></div>
+          <div class="ap-field"><label for="ap-email-1">Email</label><input id="ap-email-1" v-model="fields.email" name="email" type="email" required class="ap-input" /></div>
+          <div class="ap-field"><label for="ap-message-1">Message</label><textarea id="ap-message-1" v-model="fields.message" name="message" rows="5" required class="ap-textarea" /></div>
+          <input v-model="honeypot" class="ap-contact__hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button type="submit" class="ap-btn" :disabled="state === 'sending'">{{ state === 'sending' ? 'Sending…' : 'Send message' }}</button>
+          <p v-if="state === 'error'" class="ap-contact__feedback ap-contact__feedback--error" role="alert">{{ errorMsg }}</p>
+        </template>
+        <div v-else class="ap-contact__feedback ap-contact__feedback--sent" role="status">
+          <strong>{{ sentVia === 'api' ? 'Message sent — thank you.' : 'Almost there.' }}</strong>
+          <p>{{ sentVia === 'api' ? 'We typically reply within one business day.' : 'We opened your email app with your message — hit send there to reach us.' }}</p>
         </div>
-        <div class="ap-field"><label for="ap-name-1">Name</label><input id="ap-name-1" name="name" required class="ap-input" /></div>
-        <div class="ap-field"><label for="ap-email-1">Email</label><input id="ap-email-1" name="email" type="email" required class="ap-input" /></div>
-        <div class="ap-field"><label for="ap-message-1">Message</label><textarea id="ap-message-1" name="message" rows="5" required class="ap-textarea" /></div>
-        <button type="submit" class="ap-btn">Send message</button>
       </form>
     </div>
 
@@ -70,12 +140,20 @@ defineProps<{
             <li v-if="email"><a :href="'mailto:' + email">{{ email }}</a></li>
           </ul>
         </div>
-        <form class="ap-contact__atlas-form" :action="formAction" method="post">
+        <form class="ap-contact__atlas-form" :action="formAction" method="post" @submit="onSubmit">
           <p class="ap-contact__atlas-form-title">Send a message</p>
-          <div class="ap-field"><label for="ap-name-2">Name</label><input id="ap-name-2" name="name" required class="ap-input" /></div>
-          <div class="ap-field"><label for="ap-email-2">Email</label><input id="ap-email-2" name="email" type="email" required class="ap-input" /></div>
-          <div class="ap-field"><label for="ap-message-2">Message</label><textarea id="ap-message-2" name="message" rows="4" required class="ap-textarea" /></div>
-          <button type="submit" class="ap-btn">Send</button>
+          <template v-if="state !== 'sent'">
+            <div class="ap-field"><label for="ap-name-2">Name</label><input id="ap-name-2" v-model="fields.name" name="name" required class="ap-input" /></div>
+            <div class="ap-field"><label for="ap-email-2">Email</label><input id="ap-email-2" v-model="fields.email" name="email" type="email" required class="ap-input" /></div>
+            <div class="ap-field"><label for="ap-message-2">Message</label><textarea id="ap-message-2" v-model="fields.message" name="message" rows="4" required class="ap-textarea" /></div>
+            <input v-model="honeypot" class="ap-contact__hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
+            <button type="submit" class="ap-btn" :disabled="state === 'sending'">{{ state === 'sending' ? 'Sending…' : 'Send' }}</button>
+            <p v-if="state === 'error'" class="ap-contact__feedback ap-contact__feedback--error" role="alert">{{ errorMsg }}</p>
+          </template>
+          <div v-else class="ap-contact__feedback ap-contact__feedback--sent" role="status">
+            <strong>{{ sentVia === 'api' ? 'Message sent — thank you.' : 'Almost there.' }}</strong>
+            <p>{{ sentVia === 'api' ? 'We typically reply within one business day.' : 'We opened your email app with your message — hit send there to reach us.' }}</p>
+          </div>
         </form>
       </div>
     </div>
@@ -103,13 +181,21 @@ defineProps<{
           <div v-if="mapEmbedUrl" class="ap-contact__marquee-map">
             <iframe :src="mapEmbedUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade" />
           </div>
-          <form class="ap-contact__marquee-form" :action="formAction" method="post">
-            <div class="ap-field-row">
-              <div class="ap-field"><label for="ap-name-3">Name</label><input id="ap-name-3" name="name" required class="ap-input" /></div>
-              <div class="ap-field"><label for="ap-email-3">Email</label><input id="ap-email-3" name="email" type="email" required class="ap-input" /></div>
+          <form class="ap-contact__marquee-form" :action="formAction" method="post" @submit="onSubmit">
+            <template v-if="state !== 'sent'">
+              <div class="ap-field-row">
+                <div class="ap-field"><label for="ap-name-3">Name</label><input id="ap-name-3" v-model="fields.name" name="name" required class="ap-input" /></div>
+                <div class="ap-field"><label for="ap-email-3">Email</label><input id="ap-email-3" v-model="fields.email" name="email" type="email" required class="ap-input" /></div>
+              </div>
+              <div class="ap-field"><label for="ap-message-3">How can we help?</label><textarea id="ap-message-3" v-model="fields.message" name="message" rows="5" required class="ap-textarea" /></div>
+              <input v-model="honeypot" class="ap-contact__hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
+              <button type="submit" class="ap-btn" :disabled="state === 'sending'">{{ state === 'sending' ? 'Sending…' : 'Send message' }}</button>
+              <p v-if="state === 'error'" class="ap-contact__feedback ap-contact__feedback--error" role="alert">{{ errorMsg }}</p>
+            </template>
+            <div v-else class="ap-contact__feedback ap-contact__feedback--sent" role="status">
+              <strong>{{ sentVia === 'api' ? 'Message sent — thank you.' : 'Almost there.' }}</strong>
+              <p>{{ sentVia === 'api' ? 'We typically reply within one business day.' : 'We opened your email app with your message — hit send there to reach us.' }}</p>
             </div>
-            <div class="ap-field"><label for="ap-message-3">How can we help?</label><textarea id="ap-message-3" name="message" rows="5" required class="ap-textarea" /></div>
-            <button type="submit" class="ap-btn">Send message</button>
           </form>
         </div>
       </div>
@@ -126,13 +212,21 @@ defineProps<{
         <li v-if="phone"><span>Call</span><a :href="'tel:' + phone">{{ phone }}</a></li>
         <li v-if="email"><span>Email</span><a :href="'mailto:' + email">{{ email }}</a></li>
       </ul>
-      <form class="ap-contact__atlaswide-form" :action="formAction" method="post">
-        <div class="ap-contact__atlaswide-fields">
-          <div class="ap-field"><label for="ap-name-4">Name</label><input id="ap-name-4" name="name" required class="ap-input" /></div>
-          <div class="ap-field"><label for="ap-email-4">Email</label><input id="ap-email-4" name="email" type="email" required class="ap-input" /></div>
-          <div class="ap-field ap-contact__atlaswide-message"><label for="ap-message-4">Message</label><textarea id="ap-message-4" name="message" rows="2" required class="ap-textarea" /></div>
+      <form class="ap-contact__atlaswide-form" :action="formAction" method="post" @submit="onSubmit">
+        <template v-if="state !== 'sent'">
+          <div class="ap-contact__atlaswide-fields">
+            <div class="ap-field"><label for="ap-name-4">Name</label><input id="ap-name-4" v-model="fields.name" name="name" required class="ap-input" /></div>
+            <div class="ap-field"><label for="ap-email-4">Email</label><input id="ap-email-4" v-model="fields.email" name="email" type="email" required class="ap-input" /></div>
+            <div class="ap-field ap-contact__atlaswide-message"><label for="ap-message-4">Message</label><textarea id="ap-message-4" v-model="fields.message" name="message" rows="2" required class="ap-textarea" /></div>
+          </div>
+          <input v-model="honeypot" class="ap-contact__hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button type="submit" class="ap-btn" :disabled="state === 'sending'">{{ state === 'sending' ? 'Sending…' : 'Send message' }}</button>
+          <p v-if="state === 'error'" class="ap-contact__feedback ap-contact__feedback--error" role="alert">{{ errorMsg }}</p>
+        </template>
+        <div v-else class="ap-contact__feedback ap-contact__feedback--sent" role="status">
+          <strong>{{ sentVia === 'api' ? 'Message sent — thank you.' : 'Almost there.' }}</strong>
+          <p>{{ sentVia === 'api' ? 'We typically reply within one business day.' : 'We opened your email app with your message — hit send there to reach us.' }}</p>
         </div>
-        <button type="submit" class="ap-btn">Send message</button>
       </form>
       <div v-if="mapEmbedUrl" class="ap-contact__atlaswide-map">
         <iframe :src="mapEmbedUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade" />
@@ -157,11 +251,19 @@ defineProps<{
             <iframe :src="mapEmbedUrl" loading="lazy" referrerpolicy="no-referrer-when-downgrade" />
           </div>
         </aside>
-        <form class="ap-contact__brutalist-form" :action="formAction" method="post">
-          <div class="ap-field"><label for="ap-name-5">NAME *</label><input id="ap-name-5" name="name" required class="ap-input" /></div>
-          <div class="ap-field"><label for="ap-email-5">EMAIL *</label><input id="ap-email-5" name="email" type="email" required class="ap-input" /></div>
-          <div class="ap-field"><label for="ap-message-5">MESSAGE *</label><textarea id="ap-message-5" name="message" rows="6" required class="ap-textarea" /></div>
-          <button type="submit" class="ap-btn ap-contact__brutalist-submit">SEND →</button>
+        <form class="ap-contact__brutalist-form" :action="formAction" method="post" @submit="onSubmit">
+          <template v-if="state !== 'sent'">
+            <div class="ap-field"><label for="ap-name-5">NAME *</label><input id="ap-name-5" v-model="fields.name" name="name" required class="ap-input" /></div>
+            <div class="ap-field"><label for="ap-email-5">EMAIL *</label><input id="ap-email-5" v-model="fields.email" name="email" type="email" required class="ap-input" /></div>
+            <div class="ap-field"><label for="ap-message-5">MESSAGE *</label><textarea id="ap-message-5" v-model="fields.message" name="message" rows="6" required class="ap-textarea" /></div>
+            <input v-model="honeypot" class="ap-contact__hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" />
+            <button type="submit" class="ap-btn ap-contact__brutalist-submit" :disabled="state === 'sending'">{{ state === 'sending' ? 'SENDING…' : 'SEND →' }}</button>
+            <p v-if="state === 'error'" class="ap-contact__feedback ap-contact__feedback--error" role="alert">{{ errorMsg }}</p>
+          </template>
+          <div v-else class="ap-contact__feedback ap-contact__feedback--sent" role="status">
+            <strong>{{ sentVia === 'api' ? 'Message sent — thank you.' : 'Almost there.' }}</strong>
+            <p>{{ sentVia === 'api' ? 'We typically reply within one business day.' : 'We opened your email app with your message — hit send there to reach us.' }}</p>
+          </div>
         </form>
       </div>
     </div>
@@ -183,6 +285,25 @@ defineProps<{
 :root:not([data-contact-style]) .ap-contact__split { display: grid; }
 
 .ap-contact__intro { color: var(--ap-ink-muted); margin: 0 0 1.5rem; max-width: 52ch; }
+
+/* ── Submission feedback (shared by all five variants) ── */
+.ap-contact__hp {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px; height: 1px;
+  opacity: 0; pointer-events: none;
+}
+.ap-contact__feedback { margin: 0.75rem 0 0; font-size: 0.92rem; }
+.ap-contact__feedback--error { color: rgb(185, 28, 28); }
+.ap-contact__feedback--sent {
+  display: grid; gap: 0.35rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--ap-primary) 40%, transparent);
+  border-radius: var(--ap-radius);
+  background: color-mix(in srgb, var(--ap-primary) 8%, transparent);
+}
+.ap-contact__feedback--sent strong { color: var(--ap-primary); }
+.ap-contact__feedback--sent p { margin: 0; color: var(--ap-ink-muted); }
 .ap-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 640px) { .ap-field-row { grid-template-columns: 1fr; } }
 
