@@ -3,7 +3,8 @@
  * Used by the runtime overlay API (`/v1/sites/:slug/content`)
  * and the wizard payload posted to `/v1/orders`.
  */
-import type { ThemeName, SwatchName, SiteVariant, ArchetypeKey } from './tokens'
+import type { ThemeName, SwatchName, SiteVariant } from './themes/tokens'
+import type { ArchetypeKey } from './tokens'
 
 export interface PhotoSlot { src: string; alt?: string; caption?: string }
 export interface ContactInfo { address: string; phone: string; email: string; mapEmbedUrl?: string }
@@ -90,12 +91,98 @@ export interface VaultSiteConfig {
   social: SocialLink[]
 }
 
-export type AnySiteConfig = MesaSiteConfig | HearthSiteConfig | VaultSiteConfig
+/** Marquee (venues & attractions — theaters, galleries, bands, event spaces) */
+export type EventStatus = 'on-sale' | 'sold-out' | 'few-left' | 'free' | 'cancelled' | 'postponed'
+export interface EventItem {
+  /** Stable slug for URLs and admin keying. */
+  id: string
+  title: string
+  /** ISO 8601 date (YYYY-MM-DD). */
+  date: string
+  /** 24h time, e.g. "20:00". Optional when doors-only. */
+  startTime?: string
+  doorsTime?: string
+  /** Free-form short label, e.g. "Concert", "Exhibition opening", "Film". */
+  category?: string
+  /** Display string e.g. "$25 / $20 students" or "Free" or "Donation". */
+  priceLabel?: string
+  /** External ticket-link (Eventbrite, etgix, box-office, etc). */
+  ticketUrl?: string
+  status?: EventStatus
+  /** Performers / lineup / artists / films. */
+  lineup?: string[]
+  image: string
+  imageAlt?: string
+  blurb: string
+  /** Long description shown on the detail expansion (markdown-flavored plain text). */
+  description?: string
+  /** Optional age restriction, e.g. "All ages", "21+", "12A". */
+  ageRestriction?: string
+  /** Optional runtime in minutes (films, plays). */
+  runtimeMinutes?: number
+  featured?: boolean
+}
+export interface EventSeries {
+  name: string
+  blurb: string
+  cadence?: string
+  image?: string
+}
+export interface Performer {
+  name: string
+  role?: string
+  bio?: string
+  image?: string
+  imageAlt?: string
+  links?: SocialLink[]
+}
+export interface VenueDetail {
+  capacity?: string
+  ageRestrictions?: string
+  parking?: string
+  accessibility?: string
+  foodAndDrink?: string
+  rentalUrl?: string
+  rentalBlurb?: string
+}
+export interface MarqueePhotos {
+  hero: PhotoSlot
+  about: PhotoSlot
+  /** Lifestyle / venue / past-show photos for home + gallery. */
+  gallery: PhotoSlot[]
+}
+export interface MarqueeSiteConfig {
+  brand: string
+  tagline: string
+  blurb: string
+  theme: ThemeName
+  swatch: SwatchName
+  variant: SiteVariant
+  contact: ContactInfo
+  hours: HoursRow[]
+  photos: MarqueePhotos
+  story: Story
+  venue: VenueDetail
+  events: EventItem[]
+  /** Recurring programs (open mic, gallery walk, weekly film). */
+  series: EventSeries[]
+  /** Resident artists, ensemble members, curators (portfolio variant). */
+  performers: Performer[]
+  testimonials: Testimonial[]
+  /** Primary external ticketing platform (used for the masthead CTA). */
+  ticketingUrl?: string
+  /** Optional newsletter signup endpoint (mailchimp / convertkit URL). */
+  newsletterUrl?: string
+  social: SocialLink[]
+}
+
+export type AnySiteConfig = MesaSiteConfig | HearthSiteConfig | VaultSiteConfig | MarqueeSiteConfig
 
 export type SiteConfigOf<K extends ArchetypeKey> =
   K extends 'mesa' ? MesaSiteConfig :
   K extends 'hearth' ? HearthSiteConfig :
   K extends 'vault' ? VaultSiteConfig :
+  K extends 'marquee' ? MarqueeSiteConfig :
   never
 
 /** Wizard / order payload posted to the backend on purchase. */
