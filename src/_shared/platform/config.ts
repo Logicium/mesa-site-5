@@ -29,6 +29,20 @@ export const PLATFORM_SITE_ID = import.meta.env.VITE_SITE_ID || ''
  */
 export const PLATFORM_SITE_KEY = PLATFORM_SITE_ID || PLATFORM_SLUG
 
+/**
+ * Demo mode: premium sections (shop, ticketing, ordering, lodging, booking)
+ * render fully interactive against seeded in-browser data, clearly labelled
+ * as a demo — so template visitors experience the add-ons they'd be buying.
+ *
+ * Defaults to ON whenever this deployment is not a real, hydratable site
+ * (no platform backend, or platform enabled without a site key — which is
+ * what template demos and local template dev look like). Provisioned
+ * customer sites always get a site id/slug, so they are never demos.
+ * Override with VITE_DEMO_MODE=true|false.
+ */
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true'
+  || (import.meta.env.VITE_DEMO_MODE !== 'false' && !(PLATFORM_ENABLED && !!PLATFORM_SITE_KEY))
+
 export type ArchetypeKind = 'mesa' | 'hearth' | 'vault' | 'project' | 'keystone'
 
 /** Which archetype this UI represents. Derived from VITE_SITE_SLUG. */
