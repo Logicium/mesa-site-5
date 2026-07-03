@@ -5,7 +5,7 @@ import { useSiteContentStore } from '../../platform/siteContentStore'
 
 interface Photo { src: string; alt?: string; caption?: string }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   eyebrow?: string
   title?: string
   photos: Photo[]
@@ -16,7 +16,12 @@ const props = defineProps<{
   centered?: boolean
   /** Set false to always show the build-time photos, ignoring Instagram. */
   allowInstagram?: boolean
-}>()
+}>(), {
+  // Vue casts absent Boolean props to false — without this default the
+  // Instagram override would silently never fire on templates that don't
+  // pass the prop (i.e. all of them).
+  allowInstagram: true,
+})
 
 const content = useSiteContentStore()
 void content.loadInstagram()
@@ -32,7 +37,7 @@ function cleanCaption(raw?: string): string | undefined {
 /** When the owner has connected Instagram, their live feed replaces the
     stock/build-time gallery across every layout variant. */
 const sourcePhotos = computed<Photo[]>(() => {
-  if (props.allowInstagram !== false && content.instagramMedia.length) {
+  if (props.allowInstagram && content.instagramMedia.length) {
     return content.instagramMedia.map(m => ({
       src: m.src,
       alt: cleanCaption(m.caption) || 'Instagram post',
