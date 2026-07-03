@@ -247,7 +247,9 @@ async function onBulkGalleryFiles(evt: Event) {
     const slot: PhotoSlot = { src: '', alt: '' }
     c.photos.gallery.push(slot)
     const idx = c.photos.gallery.length - 1
-    await uploadImage(c.photos.gallery[idx], `g${idx}`, file)
+    // Use the slot we just pushed; indexing back through the array yields
+    // `PhotoSlot | undefined` under noUncheckedIndexedAccess.
+    await uploadImage(slot, `g${idx}`, file)
   }
   input.value = ''
 }
@@ -483,7 +485,7 @@ watch(siteId, loadDraft)
           </label>
           <label>Variant
             <select v-model="c.variant">
-              <option>essentials</option><option>portfolio</option>
+              <option>essentials</option><option>portfolio</option><option>extended</option>
             </select>
           </label>
         </div>
@@ -544,7 +546,7 @@ watch(siteId, loadDraft)
           </div>
         </div>
 
-        <p class="section-sub">Gallery <span class="hint">6–8 for essentials · 12–16 for portfolio</span></p>
+        <p class="section-sub">Gallery <span class="hint">6–8 for essentials · 12–16 for portfolio · 20–28 for extended</span></p>
         <div class="gallery-grid">
           <div v-for="(g, i) in c.photos.gallery" :key="i" class="photo-slot photo-slot--sm">
             <img v-if="g.src" :src="g.src" class="photo-thumb" />
@@ -947,8 +949,9 @@ textarea { resize: vertical; }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
 
-/* List rows */
-.list-row { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem; }
+/* List rows — align children to bottom so a row's delete button shares
+   its baseline with the inputs in the same row. */
+.list-row { display: flex; align-items: end; gap: 0.5rem; margin-bottom: 0.5rem; }
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 .flex-3 { flex: 3; }
