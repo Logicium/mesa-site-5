@@ -1,4 +1,5 @@
 import type { ColorSwatch, ThemeTokens, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, Alignment } from './tokens'
+import { ARCHETYPE_FORM, markSvg } from '../brand/marks'
 
 /**
  * Writes a theme + swatch + variant + archetype into CSS custom properties
@@ -72,6 +73,24 @@ export function applyTheme(
   root.style.colorScheme = swatch.mode
 
   ensureFontLink(theme)
+  updateFavicon(swatch, archetype)
+}
+
+/**
+ * Regenerates the favicon from the active swatch so the tab icon always
+ * matches the site: tile in the swatch's ink, form in its surface.
+ * Replaces the static /icon.svg fallback from index.html once JS runs.
+ */
+function updateFavicon(swatch: ColorSwatch, archetype: Archetype): void {
+  const svg = markSvg(ARCHETYPE_FORM[archetype], swatch.ink, swatch.surface)
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    document.head.appendChild(link)
+  }
+  link.type = 'image/svg+xml'
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg)
 }
 
 const FONT_LINK_ID = 'ap-theme-fonts'
