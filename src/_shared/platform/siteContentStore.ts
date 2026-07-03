@@ -8,7 +8,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { contentClient } from './contentClient'
-import { PLATFORM_ENABLED, PLATFORM_SITE_KEY, PLATFORM_SITE_ID, PLATFORM_SLUG } from './config'
+import { PLATFORM_ENABLED, PLATFORM_SITE_KEY, PLATFORM_SITE_ID, PLATFORM_SLUG, DEMO_MODE } from './config'
 
 function deepMerge<T>(base: T, override: unknown): T {
   if (override === null || override === undefined) return base
@@ -50,10 +50,24 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   const googleReviews = ref<Array<{ quote: string; author: string; source?: string; rating?: number }>>([])
   const googleReviewsLoaded = ref(false)
 
+  // Live Instagram feed, mapped to the GallerySection photo shape. When the
+  // owner has connected Instagram, this replaces the build-time gallery.
+  const instagramMedia = ref<Array<{ id: string; src: string; permalink: string; caption?: string }>>([])
+  let instagramLookup: Promise<void> | null = null
+
   // Cached id of the site whose slug matches PLATFORM_SITE_KEY — needed to call
   // the owner-scoped admin endpoints from the public site.
   const ownedSiteId = ref<string | null>(null)
   let ownedSiteLookup: Promise<string | null> | null = null
+
+  /** Add-ons enabled on this site (e.g. 'appointments'). Populated by hydrate(). */
+  const addOns = ref<string[]>([])
+  function hasAddOn(name: string): boolean {
+    // Demo templates showcase every premium add-on (against simulated data)
+    // so visitors experience what they'd be upgrading to.
+    if (DEMO_MODE) return true
+    return addOns.value.includes(name)
+  }
 
   const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SITE_KEY)
 
@@ -86,12 +100,32 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     } catch { /* ignore — testimonials remain the fallback */ }
   }
 
+  /** Fetch the connected Instagram feed once; no-op on static/demo builds.
+      Safe to call from every GallerySection — concurrent calls coalesce. */
+  function loadInstagram(): Promise<void> {
+    if (!isPlatform.value) return Promise.resolve()
+    if (!instagramLookup) {
+      instagramLookup = contentClient.fetchInstagram()
+        .then(res => {
+          instagramMedia.value = res.media.map(m => ({
+            id: m.id,
+            src: m.media_url,
+            permalink: m.permalink,
+            caption: m.caption,
+          }))
+        })
+        .catch(() => { /* stock gallery remains the fallback */ })
+    }
+    return instagramLookup
+  }
+
   async function hydrate() {
     if (!isPlatform.value || hydrated.value || hydrating.value) return
     hydrating.value = true
     try {
       const res = await contentClient.fetchContent()
       config.value = deepMerge(config.value, res.content)
+      addOns.value = res.addOns ?? []
       hydrated.value = true
       applyFavicon()
     } catch (e) {
@@ -178,7 +212,9 @@ export const useSiteContentStore = defineStore('siteContent', () => {
   return {
     config, hydrated, hydrating, error, isPlatform,
     reviewsSource, googleReviews,
+    instagramMedia, loadInstagram,
     ownedSiteId,
+    addOns, hasAddOn,
     hydrate, setBuildTimeConfig, loadGoogleReviews,
     resolveOwnedSiteId, saveThemePatch,
   }
