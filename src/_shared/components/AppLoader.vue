@@ -113,7 +113,9 @@ const captionText = computed(() => {
 }
 .ap-loader__count { font-weight: 600; }
 
-/* Fade-out transition */
-.loader-fade-leave-active { transition: opacity 0.4s ease; }
+/* Fade-out transition. pointer-events must die the moment the leave starts:
+   if the transition stalls (throttled/hidden renderer), a stuck overlay must
+   never keep blocking clicks on the page underneath. */
+.loader-fade-leave-active { transition: opacity 0.4s ease; pointer-events: none; }
 .loader-fade-leave-to    { opacity: 0; }
 </style>
