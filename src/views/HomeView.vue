@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { siteConfig } from '../config/site.config'
-import { VARIANT_PHOTO_COUNT } from '@apotome/archetype-shared/themes/tokens'
+import { VARIANT_PHOTO_COUNT, variantAtLeast } from '@apotome/archetype-shared/themes/tokens'
 import { useSiteContentStore } from '@apotome/archetype-shared/platform/siteContentStore'
 import HeroSection from '@apotome/archetype-shared/components/sections/HeroSection.vue'
 import AboutSection from '@apotome/archetype-shared/components/sections/AboutSection.vue'
@@ -11,7 +11,7 @@ import HoursSection from '@apotome/archetype-shared/components/sections/HoursSec
 import TestimonialsSection from '@apotome/archetype-shared/components/sections/TestimonialsSection.vue'
 
 const galleryLimit = computed(() => VARIANT_PHOTO_COUNT[siteConfig.variant].gallery)
-const isPortfolio = computed(() => siteConfig.variant === 'portfolio')
+const isPortfolio = computed(() => variantAtLeast(siteConfig.variant, 'portfolio'))
 const content = useSiteContentStore()
 const reviewItems = computed(() =>
   content.reviewsSource === 'google' && content.googleReviews.length
