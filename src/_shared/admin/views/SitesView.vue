@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { contentClient } from '../../platform/contentClient'
-import { getStoredToken } from '../../platform/contentClient'
 
 const sites = ref<Awaited<ReturnType<typeof contentClient.listSites>>>([])
 const loading = ref(false)
@@ -159,50 +158,56 @@ const billingOpen = ref<Record<string, boolean>>({})
 const billingMsg = ref<Record<string, string>>({})
 const resolvingBilling = ref<Record<string, boolean>>({})
 
-// Per-site screenshot blob URLs. We load them via fetch (adding the auth header)
-// so the guarded endpoint accepts the request. Blob URLs are cached in memory;
-// we also store the server URL as the src key so we only fetch once per load.
-const screenshotBlob = ref<Record<string, string | null>>({})
-const screenshotErr = ref<Record<string, boolean>>({})
+// Per-site screenshot refresh state. The screenshot URL itself lives on
+// `s.screenshotUrl` (a public Vercel Blob URL the browser can cache); the
+// frontend never fetches PNG bytes. We only track whether a manual refresh
+// is in flight so the button can show a spinner.
+const refreshingScreenshot = ref<Record<string, boolean>>({})
+const screenshotErr = ref<Record<string, string | null>>({})
 
-async function loadScreenshot(siteId: string) {
-  screenshotErr.value[siteId] = false
-  try {
-    const url = contentClient.screenshotUrl(siteId)
-    const token = getStoredToken()
-    // Bearer-only auth (no cookies). The screenshot endpoint is JWT-guarded; the
-    // token is read from localStorage on whichever origin the user signed in at.
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!res.ok) { screenshotErr.value[siteId] = true; return }
-    const blob = await res.blob()
-    const prev = screenshotBlob.value[siteId]
-    if (prev) URL.revokeObjectURL(prev)
-    screenshotBlob.value[siteId] = URL.createObjectURL(blob)
-  } catch {
-    screenshotErr.value[siteId] = true
+function screenshotSrc(s: { id: string; screenshotUrl?: string | null; screenshotCapturedAt?: string | null }): string | null {
+  if (!s.screenshotUrl) return null
+  // Cache-bust on capturedAt so a fresh capture replaces the cached image
+  // immediately. Without this, the browser would keep showing the previous
+  // PNG until its own cache TTL expires.
+  const v = s.screenshotCapturedAt ? encodeURIComponent(s.screenshotCapturedAt) : Date.now().toString()
+  return `${s.screenshotUrl}?v=${v}`
+}
+
+function screenshotAgeLabel(s: { screenshotCapturedAt?: string | null }): string {
+  if (!s.screenshotCapturedAt) return ''
+  const ms = Date.now() - new Date(s.screenshotCapturedAt).getTime()
+  const days = Math.floor(ms / 86_400_000)
+  if (days <= 0) {
+    const hours = Math.floor(ms / 3_600_000)
+    if (hours <= 0) return 'just now'
+    return `${hours}h ago`
   }
+  if (days === 1) return '1 day ago'
+  return `${days} days ago`
 }
 
 async function refreshScreenshot(siteId: string) {
-  screenshotBlob.value[siteId] = null
-  screenshotErr.value[siteId] = false
+  refreshingScreenshot.value[siteId] = true
+  screenshotErr.value[siteId] = null
   try {
-    const url = contentClient.screenshotUrl(siteId, true)
-    const token = getStoredToken()
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!res.ok) { screenshotErr.value[siteId] = true; return }
-    const blob = await res.blob()
-    const prev = screenshotBlob.value[siteId]
-    if (prev) URL.revokeObjectURL(prev)
-    screenshotBlob.value[siteId] = URL.createObjectURL(blob)
-  } catch {
-    screenshotErr.value[siteId] = true
+    const r = await contentClient.refreshScreenshot(siteId)
+    if (r.error) {
+      screenshotErr.value[siteId] = r.error
+      return
+    }
+    const idx = sites.value.findIndex(x => x.id === siteId)
+    if (idx >= 0) {
+      sites.value[idx] = {
+        ...sites.value[idx]!,
+        screenshotUrl: r.url,
+        screenshotCapturedAt: r.capturedAt,
+      }
+    }
+  } catch (e) {
+    screenshotErr.value[siteId] = e instanceof Error ? e.message : String(e)
+  } finally {
+    refreshingScreenshot.value[siteId] = false
   }
 }
 
@@ -269,12 +274,13 @@ async function reprovision(siteId: string) {
   try {
     const r = await contentClient.reprovisionSite(siteId)
     reprovisionMsg.value[siteId] = `Reprovisioning queued (order ${r.orderId.slice(0, 8)}\u2026)`
-    // Drop the current screenshot so the placeholder shows while the new deploy runs,
-    // and schedule a refresh after a reasonable build window. The backend will
-    // re-resolve the Vercel URL and invalidate any stale cache key automatically.
-    const prev = screenshotBlob.value[siteId]
-    if (prev) URL.revokeObjectURL(prev)
-    screenshotBlob.value[siteId] = null
+    // The new deploy will produce a new URL; clear the current screenshot URL
+    // locally so the placeholder shows until the post-READY auto-refresh
+    // captures the new site. The backend keeps the old blob until then.
+    const idx = sites.value.findIndex(x => x.id === siteId)
+    if (idx >= 0) {
+      sites.value[idx] = { ...sites.value[idx]!, screenshotUrl: null, screenshotCapturedAt: null }
+    }
     // Track the new deployment as soon as the provisioning processor creates it.
     // The tracker auto-refreshes the screenshot when the build reaches READY.
     startDeployTracking(siteId, null, 'Reprovisioning \u2014 creating repo + Vercel project\u2026')
@@ -419,7 +425,6 @@ onMounted(async () => {
     for (const s of sites.value) {
       if (liveUrl(s)) {
         void checkUpdate(s.id)
-        void loadScreenshot(s.id)
       }
     }
   }
@@ -477,15 +482,15 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
           :title="`Open ${s.slug} in a new tab`"
         >
           <img
-            v-if="screenshotBlob[s.id]"
-            :src="screenshotBlob[s.id]!"
+            v-if="screenshotSrc(s)"
+            :src="screenshotSrc(s)!"
             :alt="`${s.slug} preview`"
           />
           <div v-else-if="screenshotErr[s.id]" class="site-card__placeholder">
             <span>Preview unavailable</span>
           </div>
-          <div v-else class="site-card__placeholder site-card__placeholder--loading">
-            <span class="site-card__spinner" />
+          <div v-else class="site-card__placeholder">
+            <span>No screenshot yet</span>
           </div>
           <span class="site-card__open-hint">Open ↗</span>
         </a>
@@ -555,9 +560,10 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
             <button
               v-if="liveUrl(s)"
               type="button" class="adm-btn adm-btn--sm adm-btn--ghost"
-              :title="'Refresh screenshot'"
+              :disabled="refreshingScreenshot[s.id]"
+              :title="s.screenshotCapturedAt ? `Last captured ${screenshotAgeLabel(s)}` : 'No screenshot yet'"
               @click="refreshScreenshot(s.id)"
-            >⟳ Screenshot</button>
+            >{{ refreshingScreenshot[s.id] ? 'Capturing…' : '⟳ Screenshot' }}<span v-if="s.screenshotCapturedAt && !refreshingScreenshot[s.id]" class="site-card__screenshot-age"> · {{ screenshotAgeLabel(s) }}</span></button>
             <button
               v-if="isStuck(s.status)"
               type="button" class="adm-btn adm-btn--sm adm-btn--primary"
