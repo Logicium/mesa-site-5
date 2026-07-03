@@ -15,4 +15,5 @@ export const THEME_LIST: ThemeTokens[] = [studio, heritage, vibrant, ironwood]
 
 export * from './tokens'
 export * from './swatches'
+export * from './customSwatches'
 export * from './applyTheme'
