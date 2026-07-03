@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { onMounted, computed, watch, ref, onBeforeUnmount } from 'vue'
+import { ExternalLink } from 'lucide-vue-next'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useActiveSiteStore } from '../platform/activeSiteStore'
 import ToastHost from './components/ToastHost.vue'
@@ -73,6 +74,12 @@ const showSiteSwitcher = computed(() => !!auth.owner && activeSites.sites.length
 const activeSite = computed(() => activeSites.sites.find(s => s.id === activeSites.activeId) ?? null)
 function siteLabel(s: { slug: string; displayName?: string | null }) {
   return (s.displayName && s.displayName.trim()) || s.slug
+}
+/** Live URL for a site: prefer the custom domain, fall back to the production deploy. */
+function siteUrl(s: { customDomain?: string; productionUrl?: string }): string | null {
+  const raw = s.customDomain || s.productionUrl
+  if (!raw) return null
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
 }
 
 // User menu (account dropdown)
@@ -150,19 +157,35 @@ function initials(email?: string) {
               <span class="site-pill__caret" aria-hidden="true">▾</span>
             </button>
             <div v-if="siteMenuOpen" class="site-menu" role="listbox" @click.stop>
-              <button
+              <div
                 v-for="s in activeSites.sites"
                 :key="s.id"
-                type="button"
-                role="option"
-                :aria-selected="s.id === activeSites.activeId"
-                class="site-menu__item"
-                :class="{ 'site-menu__item--active': s.id === activeSites.activeId }"
-                @click="pickSite(s.id)"
+                class="site-menu__row"
+                :class="{ 'site-menu__row--active': s.id === activeSites.activeId }"
               >
-                <span class="site-menu__name">{{ siteLabel(s) }}</span>
-                <span class="site-menu__meta">{{ s.archetype }}<template v-if="s.displayName && s.displayName !== s.slug"> · {{ s.slug }}</template></span>
-              </button>
+                <button
+                  type="button"
+                  role="option"
+                  :aria-selected="s.id === activeSites.activeId"
+                  class="site-menu__item"
+                  @click="pickSite(s.id)"
+                >
+                  <span class="site-menu__name">{{ siteLabel(s) }}</span>
+                  <span class="site-menu__meta">{{ s.archetype }}<template v-if="s.displayName && s.displayName !== s.slug"> · {{ s.slug }}</template></span>
+                </button>
+                <a
+                  v-if="siteUrl(s)"
+                  :href="siteUrl(s)!"
+                  target="_blank"
+                  rel="noopener"
+                  class="site-menu__view"
+                  :title="`View ${siteLabel(s)} live`"
+                  :aria-label="`View ${siteLabel(s)} live`"
+                  @click.stop
+                >
+                  <ExternalLink :size="14" />
+                </a>
+              </div>
             </div>
           </div>
 
@@ -356,18 +379,34 @@ function initials(email?: string) {
   z-index: 100;
   max-height: 60vh; overflow-y: auto;
 }
+.site-menu__row {
+  display: flex; align-items: stretch; gap: 2px;
+  border-radius: 6px;
+}
+.site-menu__row--active { background: color-mix(in srgb, var(--adm-accent) 10%, transparent); }
 .site-menu__item {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
-  width: 100%; text-align: left;
+  flex: 1; min-width: 0; text-align: left;
   padding: 0.5rem 0.65rem;
   background: transparent; border: 0; border-radius: 6px;
   color: var(--adm-text); font: inherit; font-size: 0.85rem;
   cursor: pointer;
 }
 .site-menu__item:hover { background: var(--adm-surface-2); }
-.site-menu__item--active { background: color-mix(in srgb, var(--adm-accent) 10%, transparent); }
-.site-menu__item--active:hover { background: color-mix(in srgb, var(--adm-accent) 14%, transparent); }
-.site-menu__name { font-weight: 600; }
+.site-menu__row--active .site-menu__item:hover { background: color-mix(in srgb, var(--adm-accent) 14%, transparent); }
+.site-menu__view {
+  flex: 0 0 auto; width: 34px;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  color: var(--adm-text-muted);
+  transition: background 120ms ease, color 120ms ease;
+}
+.site-menu__view:hover { background: var(--adm-surface-2); color: var(--adm-accent); }
+.site-menu__name {
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .site-menu__meta { color: var(--adm-text-muted); font-size: 0.74rem; letter-spacing: 0.04em; }
 
 /* ── User pill + menu ──────────────────────────────────── */
