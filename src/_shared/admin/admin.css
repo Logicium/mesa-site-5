@@ -1,7 +1,8 @@
 /* ─────────────────────────────────────────────────────────────
    Apotome Admin — shared design system
-   High-end editorial palette + reusable building blocks.
-   Imported once at the top of AdminLayout.vue.
+   Instrument-panel minimalism: flat grounds, hairline structure,
+   mono micro-labels, restrained accent. Imported once at the top
+   of AdminLayout.vue; every admin view builds from these blocks.
    ───────────────────────────────────────────────────────────── */
 
 :root {
@@ -12,12 +13,12 @@
      selected) and on the very first paint.
   */
 
-  /* Surfaces */
+  /* Surfaces — flat; depth comes from hairlines, not glow */
   --adm-bg:        var(--ap-surface, #0a0b0d);
   --adm-surface:   var(--ap-surface-alt, #14161a);
   --adm-surface-2: color-mix(in srgb, var(--ap-surface-alt, #1d2026) 88%, var(--ap-ink, #ffffff) 6%);
   --adm-surface-3: color-mix(in srgb, var(--ap-surface-alt, #262a32) 78%, var(--ap-ink, #ffffff) 10%);
-  --adm-overlay:   color-mix(in srgb, var(--ap-surface, #0a0b0d) 78%, transparent);
+  --adm-overlay:   color-mix(in srgb, var(--ap-surface, #0a0b0d) 82%, transparent);
 
   /* Borders & dividers */
   --adm-border:        var(--ap-line, #262a32);
@@ -30,28 +31,29 @@
   --adm-text-subtle: color-mix(in srgb, var(--ap-ink-muted, #6b717e) 65%, transparent);
   --adm-on-accent:   var(--ap-on-primary, #0f1014);
 
-  /* Brand accent — follows the site primary, falls back to brass/champagne. */
+  /* Brand accent — follows the site primary, falls back to brass. */
   --adm-accent:        var(--ap-primary, #c4a47c);
   --adm-accent-soft:   color-mix(in srgb, var(--ap-primary, #d4b890) 78%, #ffffff 22%);
   --adm-accent-deep:   color-mix(in srgb, var(--ap-primary, #9a7d57) 78%, #000000 22%);
   --adm-accent-glow:   color-mix(in srgb, var(--ap-primary, #c4a47c) 18%, transparent);
 
-  /* Status (kept independent so warning/error states are always recognizable) */
+  /* Status (independent so states stay recognizable on any swatch) */
   --adm-success: #6fcf97;
   --adm-warn:    #f0b56b;
   --adm-danger:  #f07a7a;
   --adm-info:    #7aa2f7;
 
-  /* Radii / shadows — inherit site shape so admin matches site personality */
-  --adm-radius-sm: 4px;
-  --adm-radius:    var(--ap-radius, 8px);
-  --adm-radius-lg: var(--ap-radius-lg, 14px);
-  --adm-shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-  --adm-shadow:    var(--ap-shadow, 0 4px 16px rgba(0,0,0,0.5));
-  --adm-shadow-lg: var(--ap-shadow-lg, 0 18px 48px rgba(0,0,0,0.6));
+  /* Shape — deliberately tighter than the public site: the admin is a
+     tool, and tools have machined edges. */
+  --adm-radius-sm: 3px;
+  --adm-radius:    6px;
+  --adm-radius-lg: 10px;
+  --adm-shadow-sm: none;
+  --adm-shadow:    none;
+  --adm-shadow-lg: 0 24px 64px -32px rgba(0,0,0,0.55);
 
-  /* Type — admin headings use the site's heading font so the
-     dashboard reads as part of the same brand. */
+  /* Type — headings borrow the site's face so the dashboard reads as
+     part of the same brand; structure labels are always mono. */
   --adm-font-serif: var(--ap-font-heading, "Cormorant Garamond", "Georgia", "Times New Roman", serif);
   --adm-font-sans:  var(--ap-font-body, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif);
   --adm-font-mono:  var(--ap-font-mono, ui-monospace, "JetBrains Mono", Menlo, monospace);
@@ -63,82 +65,79 @@
 /* ── Layout primitives ─────────────────────────────────────── */
 
 .adm-page {
-  display: flex; flex-direction: column; gap: 2rem;
+  display: flex; flex-direction: column; gap: 1.75rem;
 }
 .adm-page__head {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: 1.5rem; flex-wrap: wrap;
-  padding: 1.25rem 0 1.5rem;
-  border-bottom: 1px solid var(--adm-border-soft);
-  position: relative;
+  padding: 2.25rem 0 1.25rem;
+  border-bottom: 1px solid var(--adm-border);
 }
-.adm-page__head::after {
-  /* A whisper of brand accent under the title — editorial rule. */
-  content: "";
-  position: absolute; left: 0; bottom: -1px;
-  width: 64px; height: 2px;
-  background: var(--adm-accent);
-  border-radius: 2px;
-}
-.adm-page__title-block { display: flex; flex-direction: column; gap: 0.6rem; max-width: 70ch; }
+.adm-page__title-block { display: flex; flex-direction: column; gap: 0.5rem; max-width: 70ch; }
 .adm-eyebrow {
-  text-transform: uppercase; letter-spacing: 0.22em; font-size: 0.78rem;
-  color: var(--adm-accent); font-weight: 600;
+  font-family: var(--adm-font-mono);
+  font-size: 0.68rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.22em;
+  color: var(--adm-accent);
 }
+.adm-eyebrow::before { content: '/ '; color: var(--adm-text-subtle); }
 .adm-title {
   font-family: var(--adm-font-serif);
-  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
   font-weight: var(--adm-heading-weight);
   letter-spacing: var(--adm-heading-tracking);
   text-transform: var(--adm-heading-transform);
-  color: var(--adm-text); margin: 0; line-height: 1.02;
+  color: var(--adm-text); margin: 0; line-height: 1.05;
 }
 .adm-subtitle {
-  color: var(--adm-text-muted); font-size: 1.05rem;
+  color: var(--adm-text-muted); font-size: 0.95rem;
   font-family: var(--adm-font-sans);
-  max-width: 60ch; margin: 0.25rem 0 0; line-height: 1.5;
+  max-width: 62ch; margin: 0.15rem 0 0; line-height: 1.55;
 }
 .adm-page__actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 
-/* ── Cards ─────────────────────────────────────────────────── */
+/* ── Cards — flat plates with hairline edges ───────────────── */
 
 .adm-card {
   background: var(--adm-surface);
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-lg);
   padding: 1.25rem 1.4rem;
-  box-shadow: var(--adm-shadow);
+  transition: border-color 160ms ease;
 }
+.adm-card:hover { border-color: var(--adm-border-strong); }
 .adm-card--inset { background: var(--adm-surface-2); }
 .adm-card__title {
-  font-family: var(--adm-font-serif); font-size: 1.65rem; font-weight: var(--adm-heading-weight);
+  font-family: var(--adm-font-serif); font-size: 1.3rem; font-weight: var(--adm-heading-weight);
   margin: 0 0 0.3rem;
   letter-spacing: var(--adm-heading-tracking);
   text-transform: var(--adm-heading-transform);
   line-height: 1.15;
 }
-.adm-card__sub { color: var(--adm-text-muted); font-size: 0.9rem; margin: 0 0 1rem; }
+.adm-card__sub { color: var(--adm-text-muted); font-size: 0.88rem; margin: 0 0 1rem; }
 
-/* ── Buttons ───────────────────────────────────────────────── */
+/* ── Buttons — machined, quiet until needed ────────────────── */
 
 .adm-btn {
   display: inline-flex; align-items: center; gap: 0.4rem;
   padding: 0.5rem 0.9rem;
-  background: var(--adm-surface-2);
+  background: transparent;
   color: var(--adm-text);
   border: 1px solid var(--adm-border-strong);
   border-radius: var(--adm-radius);
-  font: inherit; font-size: 0.875rem; font-weight: 500;
+  font: inherit; font-size: 0.85rem; font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer; line-height: 1;
-  transition: background 140ms, border-color 140ms, color 140ms, transform 80ms;
+  transition: background 140ms, border-color 140ms, color 140ms;
 }
-.adm-btn:hover { background: var(--adm-surface-3); border-color: var(--adm-accent-deep); }
-.adm-btn:active { transform: translateY(1px); }
+.adm-btn:hover { background: var(--adm-surface-2); border-color: var(--adm-accent-deep); }
+.adm-btn:active { background: var(--adm-surface-3); }
 .adm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .adm-btn--primary {
   background: var(--adm-accent); color: var(--adm-on-accent);
   border-color: var(--adm-accent);
+  font-weight: 600;
 }
 .adm-btn--primary:hover {
   background: var(--adm-accent-soft); border-color: var(--adm-accent-soft);
@@ -174,28 +173,36 @@
 
 .adm-label {
   display: flex; flex-direction: column; gap: 0.35rem;
-  font-size: 0.78rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.1em;
+  font-family: var(--adm-font-mono);
+  font-size: 0.68rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em;
   color: var(--adm-text-muted);
 }
 
-/* ── Badges / pills ───────────────────────────────────────── */
+/* ── Badges / pills — mono, dot-marked ─────────────────────── */
 
 .adm-badge {
-  display: inline-flex; align-items: center; gap: 0.35rem;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.72rem; font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase;
-  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 0.38rem;
+  padding: 0.18rem 0.55rem;
+  font-family: var(--adm-font-mono);
+  font-size: 0.66rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  border-radius: var(--adm-radius-sm);
   border: 1px solid var(--adm-border-strong);
-  background: var(--adm-surface-2); color: var(--adm-text-muted);
+  background: transparent; color: var(--adm-text-muted);
 }
-.adm-badge--live    { color: var(--adm-success); border-color: rgba(111,207,151,0.4); background: rgba(111,207,151,0.08); }
-.adm-badge--pending { color: var(--adm-warn);    border-color: rgba(240,181,107,0.4); background: rgba(240,181,107,0.08); }
-.adm-badge--failed  { color: var(--adm-danger);  border-color: rgba(240,122,122,0.4); background: rgba(240,122,122,0.08); }
-.adm-badge--info    { color: var(--adm-info);    border-color: rgba(122,162,247,0.4); background: rgba(122,162,247,0.08); }
+.adm-badge::before {
+  content: '';
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+.adm-badge--live    { color: var(--adm-success); border-color: rgba(111,207,151,0.35); }
+.adm-badge--live::before { box-shadow: 0 0 6px currentColor; }
+.adm-badge--pending { color: var(--adm-warn);    border-color: rgba(240,181,107,0.35); }
+.adm-badge--failed  { color: var(--adm-danger);  border-color: rgba(240,122,122,0.35); }
+.adm-badge--info    { color: var(--adm-info);    border-color: rgba(122,162,247,0.35); }
 
-/* ── Tables ────────────────────────────────────────────────── */
+/* ── Tables — ledger rules, mono headers ───────────────────── */
 
 .adm-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .adm-table th, .adm-table td {
@@ -204,30 +211,35 @@
   color: var(--adm-text);
 }
 .adm-table thead th {
-  font-size: 0.72rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.1em;
+  font-family: var(--adm-font-mono);
+  font-size: 0.64rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.14em;
   color: var(--adm-text-subtle);
   border-bottom: 1px solid var(--adm-border);
 }
-.adm-table tbody tr:hover td { background: rgba(255,255,255,0.015); }
+.adm-table tbody tr { transition: background 120ms ease; }
+.adm-table tbody tr:hover td { background: color-mix(in srgb, var(--adm-text) 2.5%, transparent); }
 
 /* ── Empty state ──────────────────────────────────────────── */
 
 .adm-empty {
   text-align: center;
   padding: 4rem 1.5rem;
-  border: 1px solid var(--adm-border);
+  border: 1px dashed var(--adm-border-strong);
   border-radius: var(--adm-radius-lg);
-  background: var(--adm-surface);
+  background: transparent;
 }
 .adm-empty__icon {
-  width: 56px; height: 56px; margin: 0 auto 1rem;
-  border-radius: 50%; display: grid; place-items: center;
-  background: var(--adm-surface-2); border: 1px solid var(--adm-border);
-  color: var(--adm-text-subtle);
+  width: 52px; height: 52px; margin: 0 auto 1rem;
+  border-radius: var(--adm-radius);
+  display: grid; place-items: center;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  color: var(--adm-accent);
+  font-size: 1.2rem;
 }
 .adm-empty__title {
-  font-family: var(--adm-font-serif); font-size: 1.5rem; font-weight: 500;
+  font-family: var(--adm-font-serif); font-size: 1.4rem; font-weight: var(--adm-heading-weight);
   margin: 0 0 0.4rem;
 }
 .adm-empty__body { color: var(--adm-text-muted); max-width: 44ch; margin: 0 auto 1.25rem; }
@@ -244,6 +256,7 @@
 
 .adm-link {
   color: var(--adm-accent-soft); text-decoration: none;
-  border-bottom: 1px solid transparent; transition: border-color 140ms;
+  border-bottom: 1px solid color-mix(in srgb, var(--adm-accent-soft) 35%, transparent);
+  transition: border-color 140ms;
 }
 .adm-link:hover { border-bottom-color: var(--adm-accent-soft); }
