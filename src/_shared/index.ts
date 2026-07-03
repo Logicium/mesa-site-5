@@ -1,5 +1,8 @@
 // Core data
-export * from './tokens'
+// `./tokens` is the legacy token file — only its unique members are exported
+// here; the canonical theme token types come from `./themes` below.
+export { ARCHETYPE_OF } from './tokens'
+export type { ArchetypeKey } from './tokens'
 export * from './content'
 export * from './pricing'
 
