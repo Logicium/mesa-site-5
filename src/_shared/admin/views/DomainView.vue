@@ -7,27 +7,35 @@ const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
 const domain = ref('')
 const dns = ref<{ instructions: Array<{ type: string; name: string; value: string; note: string }> } | null>(null)
-const verifyStatus = ref('')
+const verifying = ref(false)
+const verifyResult = ref<{ ok: boolean; apex: { domain: string; configured: boolean }; www: { domain: string; configured: boolean } } | null>(null)
 const error = ref<string | null>(null)
 
 async function loadCurrent() {
-  if (!siteId.value) { domain.value = ''; dns.value = null; return }
+  domain.value = ''; dns.value = null; verifyResult.value = null; error.value = null
+  if (!siteId.value) return
   try {
     const r = await contentClient.getDomain(siteId.value)
     if (r.domain) domain.value = r.domain
+    if (r.dns) dns.value = r.dns
   } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
 }
 async function request() {
-  error.value = null; verifyStatus.value = ''
+  error.value = null; verifyResult.value = null
   try { dns.value = (await contentClient.requestDomain(siteId.value, domain.value.trim())).dns }
   catch (e) { error.value = e instanceof Error ? e.message : String(e) }
 }
 async function verify() {
   error.value = null
+  verifying.value = true
   try {
-    const r = await contentClient.verifyDomain(siteId.value)
-    verifyStatus.value = r.ok ? 'Verified.' : 'Not yet — DNS may need more time.'
-  } catch (e) { error.value = e instanceof Error ? e.message : String(e) }
+    verifyResult.value = await contentClient.verifyDomain(siteId.value)
+  } catch (e) {
+    verifyResult.value = null
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    verifying.value = false
+  }
 }
 onMounted(loadCurrent)
 watch(siteId, loadCurrent)
@@ -72,8 +80,25 @@ watch(siteId, loadCurrent)
             </tbody>
           </table>
         </div>
-        <button type="button" class="adm-btn adm-btn--primary" @click="verify">I’ve added the records — verify</button>
-        <p v-if="verifyStatus" class="adm-msg-ok">{{ verifyStatus }}</p>
+        <button type="button" class="adm-btn adm-btn--primary" :disabled="verifying" @click="verify">
+          {{ verifying ? 'Checking DNS…' : 'I’ve added the records — verify' }}
+        </button>
+        <template v-if="verifyResult">
+          <p v-if="verifyResult.ok" class="adm-msg-ok">
+            Domain connected — DNS looks correct. SSL is issued automatically; your site should be live on {{ verifyResult.apex.domain }} within a few minutes.
+          </p>
+          <div v-else class="dn-status">
+            <p class="adm-msg-err">DNS isn’t resolving to your site yet. Records can take up to an hour to propagate — check again later.</p>
+            <ul class="dn-status__list">
+              <li :class="verifyResult.apex.configured ? 'is-ok' : 'is-bad'">
+                {{ verifyResult.apex.configured ? '✓' : '✗' }} {{ verifyResult.apex.domain }} — {{ verifyResult.apex.configured ? 'configured' : 'A record not detected' }}
+              </li>
+              <li :class="verifyResult.www.configured ? 'is-ok' : 'is-bad'">
+                {{ verifyResult.www.configured ? '✓' : '✗' }} {{ verifyResult.www.domain }} — {{ verifyResult.www.configured ? 'configured' : 'CNAME record not detected' }}
+              </li>
+            </ul>
+          </div>
+        </template>
       </div>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
     </template>
@@ -85,6 +110,14 @@ watch(siteId, loadCurrent)
 .dn-form .adm-input { flex: 1; min-width: 220px; }
 .dn-table-wrap { overflow-x: auto; margin: 0.4rem 0 1rem; }
 .dn-table { min-width: 540px; }
+.dn-status { margin-top: 0.75rem; }
+.dn-status__list {
+  list-style: none; margin: 0.5rem 0 0; padding: 0;
+  display: grid; gap: 0.3rem;
+  font-family: var(--adm-font-mono); font-size: 0.82rem;
+}
+.dn-status__list .is-ok { color: var(--adm-accent); }
+.dn-status__list .is-bad { color: rgb(185, 28, 28); }
 .dn-mono { font-family: var(--adm-font-mono); font-size: 0.82rem; word-break: break-all; }
 code { font-family: var(--adm-font-mono); color: var(--adm-accent); }
 </style>
