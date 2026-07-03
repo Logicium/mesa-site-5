@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { LayoutDashboard } from 'lucide-vue-next'
 import { useSiteTheme } from '../../composables/useSiteTheme'
 import BrandMark from '../BrandMark.vue'
 
@@ -13,6 +14,8 @@ defineProps<{
   /** Optional secondary action rendered as a ghost button before the CTA (e.g. Log in / Dashboard). */
   secondaryLabel?: string
   secondaryTo?: string
+  /** Render the secondary action as a bordered icon-only button (label becomes the tooltip / aria-label). */
+  secondaryIcon?: boolean
 }>()
 
 const route = useRoute()
@@ -110,8 +113,16 @@ onUnmounted(() => {
         >
           {{ link.label }}
         </RouterLink>
-        <RouterLink v-if="secondaryLabel && secondaryTo" :to="secondaryTo" class="ap-btn ap-btn--ghost ap-header__cta ap-header__secondary">
-          {{ secondaryLabel }}
+        <RouterLink
+          v-if="secondaryLabel && secondaryTo"
+          :to="secondaryTo"
+          class="ap-btn ap-btn--ghost ap-header__cta ap-header__secondary"
+          :class="{ 'ap-header__secondary--icon': secondaryIcon }"
+          :aria-label="secondaryLabel"
+          :title="secondaryIcon ? secondaryLabel : undefined"
+        >
+          <LayoutDashboard v-if="secondaryIcon" :size="18" :stroke-width="1.8" />
+          <template v-else>{{ secondaryLabel }}</template>
         </RouterLink>
         <RouterLink v-if="ctaLabel && ctaTo" :to="ctaTo" class="ap-btn ap-header__cta">
           {{ ctaLabel }}
@@ -190,6 +201,13 @@ onUnmounted(() => {
   height: 2px; background: var(--ap-primary);
 }
 .ap-header__cta { padding: 0.6rem 1.1rem; font-size: 0.85rem; }
+/* Icon-only secondary (e.g. Dashboard): square bordered button, icon centered. */
+.ap-header__secondary--icon {
+  padding: 0.55rem;
+  aspect-ratio: 1;
+  justify-content: center;
+}
+.ap-header__secondary--icon :deep(svg) { display: block; }
 
 .ap-header__toggle {
   display: none; background: none; border: 0;
