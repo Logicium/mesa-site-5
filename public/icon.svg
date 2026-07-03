@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Mesa">
+  <rect width="256" height="256" rx="58" fill="#1a1210"/>
+  <rect x="0.75" y="0.75" width="254.5" height="254.5" rx="57.25" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1.5"/>
+  <!-- square (4), sliced by the Apotome diagonal -->
+  <rect x="75" y="75" width="106" height="106" fill="#f4f1ea"/>
+  <polygon points="92,210 112,210 164,46 144,46" fill="#1a1210"/>
+</svg>
