@@ -2,12 +2,18 @@ import { ref, computed, watchEffect } from 'vue'
 import type { ThemeName, SwatchName, ThemeTokens, ColorSwatch, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, Alignment } from '../themes/tokens'
 import { THEMES } from '../themes'
 import { SWATCHES } from '../themes/swatches'
+import { findCustomSwatch, customSwatches } from '../themes/customSwatches'
 import { applyTheme } from '../themes/applyTheme'
 
 const STORAGE_KEY = 'ap-theme-config'
 
+/** Swatch names may be curated presets or user-built `custom-*` palettes. */
+function resolveSwatch(name: string): ColorSwatch {
+  return SWATCHES[name as SwatchName] ?? findCustomSwatch(name) ?? SWATCHES.sand
+}
+
 function readStorage(): Partial<{
-  theme: ThemeName; swatch: SwatchName; variant: SiteVariant;
+  theme: ThemeName; swatch: string; variant: SiteVariant;
   heroStyle: HeroStyle; footerStyle: FooterStyle;
   contactStyle: ContactStyle; hoursStyle: HoursStyle;
   galleryStyle: GalleryStyle; reviewsStyle: ReviewsStyle;
@@ -21,7 +27,7 @@ function readStorage(): Partial<{
 const _saved = readStorage()
 
 const themeRef = ref<ThemeName>(_saved.theme ?? 'studio')
-const swatchRef = ref<SwatchName>(_saved.swatch ?? 'sand')
+const swatchRef = ref<string>(_saved.swatch ?? 'sand')
 const variantRef = ref<SiteVariant>(_saved.variant ?? 'essentials')
 const archetypeRef = ref<Archetype>('dine')
 const heroStyleRef = ref<HeroStyle>(_saved.heroStyle ?? '1')
@@ -36,9 +42,11 @@ const alignmentRef = ref<Alignment>(_saved.alignment ?? 'left')
 
 // Module-level effect — single instance, persists + syncs CSS vars on every change
 watchEffect(() => {
+  // Touch the custom-swatch list so edits to a live custom palette re-apply.
+  void customSwatches.value
   applyTheme(
     THEMES[themeRef.value],
-    SWATCHES[swatchRef.value],
+    resolveSwatch(swatchRef.value),
     variantRef.value,
     archetypeRef.value,
     heroStyleRef.value,
@@ -77,10 +85,10 @@ watchEffect(() => {
  */
 export function useSiteTheme() {
   const theme = computed<ThemeTokens>(() => THEMES[themeRef.value])
-  const swatch = computed<ColorSwatch>(() => SWATCHES[swatchRef.value])
+  const swatch = computed<ColorSwatch>(() => resolveSwatch(swatchRef.value))
 
   function setTheme(name: ThemeName) { themeRef.value = name }
-  function setSwatch(name: SwatchName) { swatchRef.value = name }
+  function setSwatch(name: string) { swatchRef.value = name }
   function setVariant(v: SiteVariant) { variantRef.value = v }
   function setArchetype(a: Archetype) { archetypeRef.value = a }
   function setHeroStyle(s: HeroStyle) { heroStyleRef.value = s }
