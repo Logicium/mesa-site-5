@@ -278,7 +278,12 @@ watch(siteId, loadConnection)
   gap: 1rem; flex-wrap: wrap;
 }
 .rv-brand { display: flex; gap: 1rem; align-items: flex-start; min-width: 0; }
-.rv-brand--lg { margin-bottom: 1.25rem; }
+.rv-brand--lg {
+  margin-bottom: 1.25rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
 .rv-brand__logo {
   flex: 0 0 auto;
   width: 48px; height: 48px;
