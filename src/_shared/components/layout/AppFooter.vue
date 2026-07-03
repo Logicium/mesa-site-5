@@ -99,7 +99,7 @@ const year = new Date().getFullYear()
 .ap-footer__social li { display: contents; }
 .ap-footer__base {
   display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-  padding: 1.25rem 0; border-top: 1px solid var(--ap-line); color: var(--ap-ink-muted);
+  padding-block: 1.25rem; border-top: 1px solid var(--ap-line); color: var(--ap-ink-muted);
   font-size: 0.8rem;
   position: relative; z-index: 1;
 }
@@ -108,7 +108,7 @@ const year = new Date().getFullYear()
 .ap-footer__grid {
   display: grid; gap: 2rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  padding: clamp(3rem, 6vw, 5rem) 0 2rem;
+  padding-block: clamp(3rem, 6vw, 5rem) 2rem;
 }
 .ap-footer__billboard { display: none; }
 .ap-footer__minimal  { display: none; }
