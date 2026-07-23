@@ -1,7 +1,16 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { contentClient, type MenuItemDTO, type MenuItemInput, type MealOrderDTO, type OrderingConfigDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import MoneyInput from '../components/inputs/MoneyInput.vue'
+import NumberInput from '../components/inputs/NumberInput.vue'
+import ToggleInput from '../components/inputs/ToggleInput.vue'
+import SelectInput from '../components/inputs/SelectInput.vue'
+import SearchSelect from '../components/inputs/SearchSelect.vue'
+import TimezoneSelect from '../components/inputs/TimezoneSelect.vue'
+import ImageInput from '../components/inputs/ImageInput.vue'
+
+const CURRENCY_OPTIONS = ['USD', 'CAD', 'EUR', 'GBP', 'MXN'].map(c => ({ value: c, label: c }))
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
@@ -25,6 +34,12 @@ const dayLabels: Array<{ idx: number; label: string }> = [
 
 const newItem = ref<MenuItemInput>({
   sku: '', name: '', description: '', priceCents: 0, currency: 'USD', category: '', imageUrl: '', active: true, sortOrder: 0,
+})
+
+/** Categories already in use — the picker offers them and allows new ones. */
+const categoryOptions = computed(() => {
+  const seen = [...new Set(items.value.map(i => i.category).filter(Boolean))]
+  return seen.map(c => ({ value: c, label: c }))
 })
 
 async function load() {
@@ -189,7 +204,7 @@ watch(siteId, load)
   <section class="adm-page">
     <header class="adm-page__head">
       <div>
-        <span class="adm-eyebrow">Premium add-on</span>
+        <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Ordering</h1>
         <p class="adm-subtitle">
           Accept pickup orders from your menu. Define your hours, kitchen capacity,
@@ -212,7 +227,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loading…</p>
+      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -229,15 +244,13 @@ watch(siteId, load)
           <li v-for="p in items" :key="p.id" class="rm-row">
             <input class="adm-input rm-row__sku" v-model="p.sku" placeholder="SKU" />
             <input class="adm-input rm-row__name" v-model="p.name" placeholder="Name" />
-            <input class="adm-input rm-row__cat" v-model="p.category" placeholder="Category" />
+            <div class="rm-row__cat"><SearchSelect v-model="p.category" :options="categoryOptions" creatable placeholder="Category" /></div>
             <input class="adm-input rm-row__desc" v-model="p.description" placeholder="Description" />
-            <input class="adm-input rm-row__price" type="number" min="0" step="1" v-model.number="p.priceCents" title="Price (cents)" />
-            <input class="adm-input rm-row__img" v-model="p.imageUrl" placeholder="image url" />
-            <label class="rm-row__active" :title="p.active ? 'Active' : 'Hidden'">
-              <input type="checkbox" v-model="p.active" /> live
-            </label>
+            <div class="rm-row__price"><MoneyInput v-model="p.priceCents" :currency="resolved?.currency || 'USD'" /></div>
+            <div class="rm-row__img"><ImageInput :model-value="p.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => p.imageUrl = v" /></div>
+            <div class="rm-row__active"><ToggleInput v-model="p.active" label="Live" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="saveItem(p)">Save</button>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteItem(p)">×</button>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteItem(p)">Ã—</button>
           </li>
         </ul>
         <p v-else class="adm-muted adm-mb">No menu items yet.</p>
@@ -245,48 +258,25 @@ watch(siteId, load)
         <div class="rm-row rm-row--new">
           <input class="adm-input rm-row__sku" v-model="newItem.sku" placeholder="SKU" />
           <input class="adm-input rm-row__name" v-model="newItem.name" placeholder="Name" />
-          <input class="adm-input rm-row__cat" v-model="newItem.category" placeholder="Category" />
+          <div class="rm-row__cat"><SearchSelect :model-value="newItem.category ?? ''" :options="categoryOptions" creatable placeholder="Category" @update:model-value="(v: string) => newItem.category = v" /></div>
           <input class="adm-input rm-row__desc" v-model="newItem.description" placeholder="Description" />
-          <input class="adm-input rm-row__price" type="number" min="0" step="1" v-model.number="newItem.priceCents" placeholder="cents" />
-          <input class="adm-input rm-row__img" v-model="newItem.imageUrl" placeholder="image url" />
-          <label class="rm-row__active">
-            <input type="checkbox" v-model="newItem.active" /> live
-          </label>
+          <div class="rm-row__price"><MoneyInput v-model="newItem.priceCents" :currency="resolved?.currency || 'USD'" /></div>
+          <div class="rm-row__img"><ImageInput :model-value="newItem.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => newItem.imageUrl = v" /></div>
+          <div class="rm-row__active"><ToggleInput :model-value="newItem.active ?? true" label="Live" @update:model-value="(v: boolean) => newItem.active = v" /></div>
           <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addItem">Add</button>
           <span />
         </div>
-        <p class="adm-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
-          Prices are in cents (e.g. <code>1200</code> = $12).
-        </p>
       </section>
 
       <section v-if="resolved" class="adm-card">
         <h2 class="adm-h2">Ordering settings</h2>
         <div class="meta-grid">
-          <label class="adm-field">
-            <span>Timezone</span>
-            <input class="adm-input" v-model="resolved.timezone" />
-          </label>
-          <label class="adm-field">
-            <span>Currency</span>
-            <input class="adm-input" v-model="resolved.currency" maxlength="3" />
-          </label>
-          <label class="adm-field">
-            <span>Slot length (minutes)</span>
-            <input class="adm-input" type="number" min="5" step="5" v-model.number="resolved.slotMinutes" />
-          </label>
-          <label class="adm-field">
-            <span>Prep lead time (minutes)</span>
-            <input class="adm-input" type="number" min="0" step="5" v-model.number="resolved.prepMinutes" />
-          </label>
-          <label class="adm-field">
-            <span>Max orders per slot</span>
-            <input class="adm-input" type="number" min="1" v-model.number="resolved.maxOrdersPerSlot" />
-          </label>
-          <label class="adm-field">
-            <span>Window (days forward)</span>
-            <input class="adm-input" type="number" min="1" max="60" v-model.number="resolved.windowDays" />
-          </label>
+          <TimezoneSelect v-model="resolved.timezone" label="Timezone" />
+          <SelectInput v-model="resolved.currency" label="Currency" :options="CURRENCY_OPTIONS" />
+          <NumberInput v-model="resolved.slotMinutes" label="Slot length" :min="5" :step="5" unit="min" />
+          <NumberInput v-model="resolved.prepMinutes" label="Prep lead time" :min="0" :step="5" unit="min" />
+          <NumberInput v-model="resolved.maxOrdersPerSlot" label="Max orders per slot" :min="1" unit="orders" />
+          <NumberInput v-model="resolved.windowDays" label="Window forward" :min="1" :max="60" unit="days" />
           <label class="adm-field adm-field--full">
             <span>Pickup instructions</span>
             <textarea class="adm-input" rows="2" v-model="resolved.pickupInstructions" />
@@ -311,7 +301,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Saving…' : 'Save settings' }}
+          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -328,11 +318,11 @@ watch(siteId, load)
               <td>{{ pickupLocal(o.pickupAt) }}</td>
               <td>
                 {{ o.name }}<br />
-                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> · {{ o.phone }}</template></small>
+                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> Â· {{ o.phone }}</template></small>
               </td>
               <td>
                 <div v-for="it in o.items" :key="it.menuItemId">
-                  {{ it.name }} × {{ it.quantity }}<template v-if="it.notes"> <em>({{ it.notes }})</em></template>
+                  {{ it.name }} Ã— {{ it.quantity }}<template v-if="it.notes"> <em>({{ it.notes }})</em></template>
                 </div>
               </td>
               <td>{{ money(o.totalCents, o.currency) }}</td>
