@@ -1,7 +1,14 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { contentClient, type ShopConfigDTO, type ShopProductDTO, type ShopProductInput, type ShopOrderDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import MoneyInput from '../components/inputs/MoneyInput.vue'
+import NumberInput from '../components/inputs/NumberInput.vue'
+import ToggleInput from '../components/inputs/ToggleInput.vue'
+import SelectInput from '../components/inputs/SelectInput.vue'
+import ImageInput from '../components/inputs/ImageInput.vue'
+
+const CURRENCY_OPTIONS = ['USD', 'CAD', 'EUR', 'GBP', 'MXN'].map(c => ({ value: c, label: c }))
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
@@ -162,7 +169,7 @@ watch(siteId, load)
   <section class="adm-page">
     <header class="adm-page__head">
       <div>
-        <span class="adm-eyebrow">Premium add-on</span>
+        <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Shop</h1>
         <p class="adm-subtitle">
           Sell products from your site. Manage your catalog, fulfillment, and orders.
@@ -184,7 +191,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loading…</p>
+      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -202,14 +209,12 @@ watch(siteId, load)
             <input class="adm-input rm-row__sku" v-model="p.sku" placeholder="SKU" />
             <input class="adm-input rm-row__name" v-model="p.name" placeholder="Name" />
             <input class="adm-input rm-row__desc" v-model="p.description" placeholder="Description" />
-            <input class="adm-input rm-row__price" type="number" min="0" step="1" v-model.number="p.priceCents" title="Price (cents)" />
-            <input class="adm-input rm-row__inv" type="number" min="-1" v-model.number="p.inventory" title="Inventory (-1 = unlimited)" />
-            <input class="adm-input rm-row__img" v-model="p.imageUrl" placeholder="image url" />
-            <label class="rm-row__active" :title="p.active ? 'Active' : 'Hidden'">
-              <input type="checkbox" v-model="p.active" /> live
-            </label>
+            <div class="rm-row__price"><MoneyInput v-model="p.priceCents" :currency="resolved?.currency || 'USD'" /></div>
+            <div class="rm-row__inv"><NumberInput v-model="p.inventory" :min="-1" unit="stock" /></div>
+            <div class="rm-row__img"><ImageInput :model-value="p.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => p.imageUrl = v" /></div>
+            <div class="rm-row__active"><ToggleInput v-model="p.active" label="Live" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="saveProduct(p)">Save</button>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteProduct(p)">×</button>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteProduct(p)">Ã—</button>
           </li>
         </ul>
         <p v-else class="adm-muted adm-mb">No products yet.</p>
@@ -218,50 +223,36 @@ watch(siteId, load)
           <input class="adm-input rm-row__sku" v-model="newProduct.sku" placeholder="SKU" />
           <input class="adm-input rm-row__name" v-model="newProduct.name" placeholder="Name" />
           <input class="adm-input rm-row__desc" v-model="newProduct.description" placeholder="Description" />
-          <input class="adm-input rm-row__price" type="number" min="0" step="1" v-model.number="newProduct.priceCents" placeholder="cents" />
-          <input class="adm-input rm-row__inv" type="number" min="-1" v-model.number="newProduct.inventory" placeholder="qty" />
-          <input class="adm-input rm-row__img" v-model="newProduct.imageUrl" placeholder="image url" />
-          <label class="rm-row__active">
-            <input type="checkbox" v-model="newProduct.active" /> live
-          </label>
+          <div class="rm-row__price"><MoneyInput v-model="newProduct.priceCents" :currency="resolved?.currency || 'USD'" /></div>
+          <div class="rm-row__inv"><NumberInput v-model="newProduct.inventory" :min="-1" unit="stock" /></div>
+          <div class="rm-row__img"><ImageInput :model-value="newProduct.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => newProduct.imageUrl = v" /></div>
+          <div class="rm-row__active"><ToggleInput v-model="newProduct.active" label="Live" /></div>
           <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addProduct">Add</button>
           <span />
         </div>
         <p class="adm-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
-          Prices are in cents (e.g. <code>2500</code> = $25). Inventory <code>-1</code> = unlimited.
+          Inventory <code>-1</code> = unlimited.
         </p>
       </section>
 
       <section v-if="resolved" class="adm-card">
         <h2 class="adm-h2">Shop settings</h2>
         <div class="meta-grid">
-          <label class="adm-field">
-            <span>Currency</span>
-            <input class="adm-input" v-model="resolved.currency" maxlength="3" />
-          </label>
-          <label class="adm-field">
-            <span>Shipping flat rate (cents)</span>
-            <input class="adm-input" type="number" min="0" step="1" v-model.number="resolved.shippingFlatCents" />
-          </label>
-          <label class="adm-field adm-field--full">
+          <SelectInput v-model="resolved.currency" label="Currency" :options="CURRENCY_OPTIONS" />
+          <MoneyInput v-model="resolved.shippingFlatCents" label="Shipping flat rate" :currency="resolved.currency || 'USD'" />
+          <div class="adm-field adm-field--full">
             <span>Fulfillment offered</span>
             <div class="fulfill-toggles">
-              <label>
-                <input type="checkbox" :checked="resolved.fulfillment.includes('pickup')" @change="toggleFulfillment('pickup')" />
-                Local pickup
-              </label>
-              <label>
-                <input type="checkbox" :checked="resolved.fulfillment.includes('shipping')" @change="toggleFulfillment('shipping')" />
-                Ship to customer
-              </label>
+              <ToggleInput :model-value="resolved.fulfillment.includes('pickup')" label="Local pickup" @update:model-value="() => toggleFulfillment('pickup')" />
+              <ToggleInput :model-value="resolved.fulfillment.includes('shipping')" label="Ship to customer" @update:model-value="() => toggleFulfillment('shipping')" />
             </div>
-          </label>
+          </div>
           <label class="adm-field adm-field--full">
             <span>Pickup instructions (shown after pickup orders)</span>
             <textarea class="adm-input" rows="2" v-model="resolved.pickupInstructions" />
           </label>
           <label class="adm-field adm-field--full">
-            <span>Notification email (optional — defaults to your account email)</span>
+            <span>Notification email (optional â€” defaults to your account email)</span>
             <input class="adm-input" type="email" v-model="resolved.notifyEmail" />
           </label>
         </div>
@@ -269,7 +260,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Saving…' : 'Save settings' }}
+          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -286,10 +277,10 @@ watch(siteId, load)
               <td>{{ new Date(o.createdAt).toLocaleString() }}</td>
               <td>
                 {{ o.name }}<br />
-                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> · {{ o.phone }}</template></small>
+                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> Â· {{ o.phone }}</template></small>
               </td>
               <td>
-                <div v-for="it in o.items" :key="it.productId">{{ it.name }} × {{ it.quantity }}</div>
+                <div v-for="it in o.items" :key="it.productId">{{ it.name }} Ã— {{ it.quantity }}</div>
               </td>
               <td>{{ o.fulfillment }}</td>
               <td>{{ money(o.totalCents, o.currency) }}</td>
