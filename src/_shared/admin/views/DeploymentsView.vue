@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { contentClient } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
 
@@ -46,6 +46,9 @@ onMounted(async () => {
   const first = activeSites.activeId || sites.value[0]?.id
   if (first) await selectSite(first)
 })
+
+// Follow the header's site switcher.
+watch(() => activeSites.activeId, (id) => { if (id && id !== selectedSiteId.value) void selectSite(id) })
 </script>
 
 <template>
