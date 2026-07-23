@@ -34,6 +34,12 @@ export function applyDeep(target: Record<string, unknown>, source: unknown): voi
     const cur = target[k]
     if (v && typeof v === 'object' && !Array.isArray(v) && cur && typeof cur === 'object' && !Array.isArray(cur)) {
       applyDeep(cur as Record<string, unknown>, v)
+    } else if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(cur)) {
+      // Shape mismatch: the overlay has a plain object where the template
+      // expects an array (seen with legacy admin payloads, e.g. rooms as
+      // `{intro, items}`). Clobbering the array crashes template code that
+      // maps over it — keep the build-time array and skip the bad branch.
+      console.warn(`[content] ignoring overlay for "${k}": expected array, got object`)
     } else {
       target[k] = v
     }
