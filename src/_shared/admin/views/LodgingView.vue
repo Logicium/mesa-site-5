@@ -1,7 +1,19 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { contentClient, type LodgingConfigDTO, type LodgingRoomDTO, type ReservationDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import MoneyInput from '../components/inputs/MoneyInput.vue'
+import NumberInput from '../components/inputs/NumberInput.vue'
+import SelectInput from '../components/inputs/SelectInput.vue'
+import TimezoneSelect from '../components/inputs/TimezoneSelect.vue'
+import ImageInput from '../components/inputs/ImageInput.vue'
+
+const CURRENCY_OPTIONS = ['USD', 'CAD', 'EUR', 'GBP', 'MXN'].map(c => ({ value: c, label: c }))
+
+/** Room ids are derived from the label — owners should never hand-write slugs. */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+}
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
@@ -123,7 +135,7 @@ watch(siteId, load)
   <section class="adm-page">
     <header class="adm-page__head">
       <div>
-        <span class="adm-eyebrow">Premium add-on</span>
+        <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Lodging</h1>
         <p class="adm-subtitle">
           Accept reservations on your booking page. Define your rooms, set your stay rules,
@@ -146,7 +158,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loading…</p>
+      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -162,54 +174,34 @@ watch(siteId, load)
 
           <ul v-if="rooms.length" class="rm-list">
             <li v-for="(r, i) in rooms" :key="i" class="rm-row">
-              <input class="adm-input rm-row__id" v-model="r.id" placeholder="id (e.g. cabin-pine)" />
-              <input class="adm-input rm-row__label" v-model="r.label" placeholder="Label" />
+              <input class="adm-input rm-row__label" v-model="r.label" placeholder="Label (e.g. Pine Cabin)" @change="!r.id && (r.id = slugify(r.label))" />
               <input class="adm-input rm-row__desc" v-model="r.description" placeholder="Short description" />
-              <input class="adm-input rm-row__cap" type="number" min="1" max="20" v-model.number="r.capacity" title="Capacity" />
-              <input class="adm-input rm-row__rate" type="number" min="0" step="100" v-model.number="r.nightlyRateCents" placeholder="cents/night" title="Nightly rate (cents)" />
-              <input class="adm-input rm-row__img" v-model="r.imageUrl" placeholder="image url" />
-              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeRoom(i)">×</button>
+              <div class="rm-row__cap"><NumberInput :model-value="r.capacity" :min="1" :max="20" unit="guests" @update:model-value="(v: number) => r.capacity = v" /></div>
+              <div class="rm-row__rate"><MoneyInput :model-value="r.nightlyRateCents ?? 0" :currency="resolved?.currency || 'USD'" @update:model-value="(v: number) => r.nightlyRateCents = v" /></div>
+              <div class="rm-row__img"><ImageInput :model-value="r.imageUrl ?? ''" :site-id="siteId" @update:model-value="(v: string) => r.imageUrl = v" /></div>
+              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeRoom(i)">✕</button>
             </li>
           </ul>
           <p v-else class="adm-muted adm-mb">No rooms yet.</p>
 
           <div class="rm-row rm-row--new">
-            <input class="adm-input rm-row__id" v-model="newRoom.id" placeholder="id" />
-            <input class="adm-input rm-row__label" v-model="newRoom.label" placeholder="Label" />
+            <input class="adm-input rm-row__label" v-model="newRoom.label" placeholder="Label (e.g. Pine Cabin)" @change="newRoom.id = slugify(newRoom.label)" />
             <input class="adm-input rm-row__desc" v-model="newRoom.description" placeholder="Description" />
-            <input class="adm-input rm-row__cap" type="number" min="1" v-model.number="newRoom.capacity" />
-            <input class="adm-input rm-row__rate" type="number" min="0" step="100" v-model.number="newRoom.nightlyRateCents" placeholder="cents/night" />
-            <input class="adm-input rm-row__img" v-model="newRoom.imageUrl" placeholder="image url" />
+            <div class="rm-row__cap"><NumberInput :model-value="newRoom.capacity" :min="1" unit="guests" @update:model-value="(v: number) => newRoom.capacity = v" /></div>
+            <div class="rm-row__rate"><MoneyInput :model-value="newRoom.nightlyRateCents ?? 0" :currency="resolved?.currency || 'USD'" @update:model-value="(v: number) => newRoom.nightlyRateCents = v" /></div>
+            <div class="rm-row__img"><ImageInput :model-value="newRoom.imageUrl ?? ''" :site-id="siteId" @update:model-value="(v: string) => newRoom.imageUrl = v" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addRoom">Add</button>
           </div>
-          <p class="adm-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
-            Rates are stored in cents (e.g. <code>15000</code> = $150).
-          </p>
         </section>
 
         <section v-if="resolved" class="adm-card">
           <h2 class="adm-h2">Stay rules</h2>
           <div class="meta-grid">
-            <label class="adm-field">
-              <span>Timezone</span>
-              <input class="adm-input" v-model="resolved.timezone" />
-            </label>
-            <label class="adm-field">
-              <span>Currency</span>
-              <input class="adm-input" v-model="resolved.currency" maxlength="3" />
-            </label>
-            <label class="adm-field">
-              <span>Min nights</span>
-              <input class="adm-input" type="number" min="1" v-model.number="resolved.minNights" />
-            </label>
-            <label class="adm-field">
-              <span>Max nights</span>
-              <input class="adm-input" type="number" min="1" v-model.number="resolved.maxNights" />
-            </label>
-            <label class="adm-field">
-              <span>Window (days)</span>
-              <input class="adm-input" type="number" min="1" max="365" v-model.number="resolved.windowDays" />
-            </label>
+            <TimezoneSelect v-model="resolved.timezone" label="Timezone" />
+            <SelectInput v-model="resolved.currency" label="Currency" :options="CURRENCY_OPTIONS" />
+            <NumberInput v-model="resolved.minNights" label="Min nights" :min="1" unit="nights" />
+            <NumberInput v-model="resolved.maxNights" label="Max nights" :min="1" unit="nights" />
+            <NumberInput v-model="resolved.windowDays" label="Booking window" :min="1" :max="365" unit="days" />
             <label class="adm-field">
               <span>Check-in time</span>
               <input class="adm-input" type="time" v-model="resolved.checkInTime" />
@@ -224,7 +216,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Saving…' : 'Save settings' }}
+          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -238,12 +230,12 @@ watch(siteId, load)
           </thead>
           <tbody>
             <tr v-for="r in reservations" :key="r.id">
-              <td>{{ r.checkIn }} → {{ r.checkOut }} <small class="adm-muted">({{ r.nights }}n)</small></td>
-              <td>{{ r.roomLabel }} <small class="adm-muted">· {{ r.partySize }} guest{{ r.partySize === 1 ? '' : 's' }}</small></td>
+              <td>{{ r.checkIn }} â†’ {{ r.checkOut }} <small class="adm-muted">({{ r.nights }}n)</small></td>
+              <td>{{ r.roomLabel }} <small class="adm-muted">Â· {{ r.partySize }} guest{{ r.partySize === 1 ? '' : 's' }}</small></td>
               <td>{{ r.name }}</td>
               <td>
                 <a :href="`mailto:${r.email}`">{{ r.email }}</a>
-                <template v-if="r.phone"> · {{ r.phone }}</template>
+                <template v-if="r.phone"> Â· {{ r.phone }}</template>
               </td>
               <td>{{ money(r.totalCents, r.currency) }}</td>
               <td>
