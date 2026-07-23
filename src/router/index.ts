@@ -3,6 +3,7 @@ import { siteConfig } from '../config/site.config'
 import { PLATFORM_ENABLED } from '@apotome/archetype-shared/platform/config'
 import { adminRoutes } from '@apotome/archetype-shared/admin/routes'
 import { variantAtLeast } from '@apotome/archetype-shared/themes/tokens'
+import { installAnalytics } from '@apotome/archetype-shared/platform/track'
 
 const isPortfolio = variantAtLeast(siteConfig.variant, 'portfolio')
 
@@ -20,5 +21,7 @@ const router = createRouter({
   ],
   scrollBehavior: () => ({ top: 0 }),
 })
+
+installAnalytics(router)
 
 export default router
