@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   contentClient,
@@ -9,6 +9,16 @@ import {
   type TicketTierDTO,
 } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import MoneyInput from '../components/inputs/MoneyInput.vue'
+import NumberInput from '../components/inputs/NumberInput.vue'
+import ToggleInput from '../components/inputs/ToggleInput.vue'
+import SelectInput from '../components/inputs/SelectInput.vue'
+import ImageInput from '../components/inputs/ImageInput.vue'
+
+/** Tier ids derive from the label — owners never hand-write slugs. */
+function slugifyTier(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'tier'
+}
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
@@ -212,9 +222,9 @@ watch(siteId, load)
   <section class="adm-page">
     <header class="adm-page__head">
       <div>
-        <span class="adm-eyebrow">Premium add-on</span>
+        <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Ticketing</h1>
-        <p class="adm-subtitle">Sell event tickets — set tiers, track capacity, and check guests in at the door.</p>
+        <p class="adm-subtitle">Sell event tickets â€” set tiers, track capacity, and check guests in at the door.</p>
       </div>
       <div class="head-actions">
         <button
@@ -232,7 +242,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loading…</p>
+      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>The Ticketing add-on is currently <strong>off</strong>. Enable it above to start selling.</p>
@@ -244,25 +254,20 @@ watch(siteId, load)
           <label>Title<input class="adm-input" v-model="newEvent.title" /></label>
           <label>Venue<input class="adm-input" v-model="newEvent.venue" /></label>
           <label>Starts<input class="adm-input" type="datetime-local" v-model="newEvent.startsAt" /></label>
-          <label>Capacity (-1 = unlimited)<input class="adm-input" type="number" min="-1" v-model.number="newEvent.capacity" /></label>
-          <label>Currency<input class="adm-input" v-model="newEvent.currency" maxlength="10" /></label>
-          <label>Status
-            <select class="adm-input" v-model="newEvent.status">
-              <option v-for="s in statusOptions" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </label>
+          <div><NumberInput v-model="newEvent.capacity" label="Capacity" :min="-1" unit="seats · -1 = ∞" /></div>
+          <SelectInput v-model="newEvent.currency" label="Currency" :options="['USD','CAD','EUR','GBP','MXN'].map(c => ({ value: c, label: c }))" />
+          <SelectInput v-model="newEvent.status" label="Status" :options="statusOptions.map(s => ({ value: s, label: s.replace('_', ' ') }))" />
           <label class="grid__full">Description<textarea class="adm-input" v-model="newEvent.description" rows="2" /></label>
-          <label class="grid__full">Image URL<input class="adm-input" v-model="newEvent.imageUrl" /></label>
+          <div class="grid__full"><ImageInput :model-value="newEvent.imageUrl ?? ''" :site-id="siteId" label="Event image" @update:model-value="(v: string) => newEvent.imageUrl = v" /></div>
         </div>
         <h3 class="adm-h3">Tiers</h3>
         <ul class="rm-list">
           <li v-for="t in newEvent.tiers" :key="t.id" class="rm-row">
-            <input class="adm-input rm-row__sku" v-model="t.id" placeholder="id" />
-            <input class="adm-input rm-row__name" v-model="t.label" placeholder="Label" />
-            <input class="adm-input rm-row__price" type="number" min="0" v-model.number="t.priceCents" title="Price cents" />
-            <input class="adm-input rm-row__inv" type="number" min="-1" v-model.number="t.capacity" title="Capacity (-1 = unlimited)" />
-            <label class="rm-row__active"><input type="checkbox" v-model="t.active" /> live</label>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeTier(newEvent.tiers, t.id)">×</button>
+            <input class="adm-input rm-row__name" v-model="t.label" placeholder="Label (e.g. General admission)" @change="t.id = t.id || slugifyTier(t.label)" />
+            <div class="rm-row__price"><MoneyInput v-model="t.priceCents" :currency="newEvent.currency || 'USD'" /></div>
+            <div class="rm-row__inv"><NumberInput v-model="t.capacity" :min="-1" unit="seats" /></div>
+            <div class="rm-row__active"><ToggleInput :model-value="t.active ?? true" label="Live" @update:model-value="(v: boolean) => t.active = v" /></div>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeTier(newEvent.tiers, t.id)">✕</button>
           </li>
         </ul>
         <div class="adm-row-actions">
@@ -285,24 +290,19 @@ watch(siteId, load)
                          :value="toLocalInput(e.startsAt)"
                          @input="e.startsAt = fromLocalInput(($event.target as HTMLInputElement).value)" />
                 </label>
-                <label>Capacity<input class="adm-input" type="number" min="-1" v-model.number="e.capacity" /></label>
-                <label>Status
-                  <select class="adm-input" v-model="e.status">
-                    <option v-for="s in statusOptions" :key="s" :value="s">{{ s }}</option>
-                  </select>
-                </label>
+                <div><NumberInput v-model="e.capacity" label="Capacity" :min="-1" unit="seats · -1 = ∞" /></div>
+                <SelectInput v-model="e.status" label="Status" :options="statusOptions.map(s => ({ value: s, label: s.replace('_', ' ') }))" />
                 <p class="adm-muted">Sold: {{ e.sold }}{{ e.capacity === -1 ? '' : ` / ${e.capacity}` }}</p>
               </div>
               <h4 class="adm-h3">Tiers</h4>
               <ul class="rm-list">
                 <li v-for="t in e.tiers" :key="t.id" class="rm-row">
-                  <input class="adm-input rm-row__sku" v-model="t.id" />
-                  <input class="adm-input rm-row__name" v-model="t.label" />
-                  <input class="adm-input rm-row__price" type="number" min="0" v-model.number="t.priceCents" />
-                  <input class="adm-input rm-row__inv" type="number" min="-1" v-model.number="t.capacity" />
-                  <label class="rm-row__active"><input type="checkbox" v-model="t.active" /> live</label>
+                  <input class="adm-input rm-row__name" v-model="t.label" @change="t.id = t.id || slugifyTier(t.label)" />
+                  <div class="rm-row__price"><MoneyInput v-model="t.priceCents" :currency="e.currency || 'USD'" /></div>
+                  <div class="rm-row__inv"><NumberInput v-model="t.capacity" :min="-1" unit="seats" /></div>
+                  <div class="rm-row__active"><ToggleInput :model-value="t.active ?? true" label="Live" @update:model-value="(v: boolean) => t.active = v" /></div>
                   <span class="adm-muted rm-row__sold">{{ t.sold ?? 0 }} sold</span>
-                  <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeTier(e.tiers, t.id)">×</button>
+                  <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeTier(e.tiers, t.id)">✕</button>
                 </li>
               </ul>
               <div class="adm-row-actions">
