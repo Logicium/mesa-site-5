@@ -19,7 +19,9 @@ onMounted(async () => {
 
 watch(() => auth.owner?.id, async (id) => { if (id) await activeSites.refresh() })
 
-const navItems = [
+interface NavItem { to: string; label: string; exact?: boolean; premium?: boolean }
+
+const navItems: NavItem[] = [
   { to: '/admin', label: 'Sites', exact: true },
   { to: '/admin/content', label: 'Content' },
   { to: '/admin/inbox', label: 'Inbox' },
@@ -32,39 +34,20 @@ const navItems = [
   { to: '/admin/deployments', label: 'Deployments' },
 ]
 
-const keystoneNavItems = [
-  ...navItems.slice(0, 9),
-  { to: '/admin/appointments', label: 'Appointments' },
-]
+/** Each archetype's premium commerce feature — marked so the nav renders
+    the ★ Premium badge and owners can tell it apart from included tools. */
+const PREMIUM_NAV: Record<string, NavItem> = {
+  keystone: { to: '/admin/appointments', label: 'Appointments', premium: true },
+  hearth:   { to: '/admin/lodging', label: 'Lodging', premium: true },
+  vault:    { to: '/admin/shop', label: 'Shop', premium: true },
+  mesa:     { to: '/admin/ordering', label: 'Ordering', premium: true },
+  marquee:  { to: '/admin/ticketing', label: 'Ticketing', premium: true },
+}
 
-const hearthNavItems = [
-  ...navItems.slice(0, 9),
-  { to: '/admin/lodging', label: 'Lodging' },
-]
-
-const vaultNavItems = [
-  ...navItems.slice(0, 9),
-  { to: '/admin/shop', label: 'Shop' },
-]
-
-const mesaNavItems = [
-  ...navItems.slice(0, 9),
-  { to: '/admin/ordering', label: 'Ordering' },
-]
-
-const marqueeNavItems = [
-  ...navItems.slice(0, 9),
-  { to: '/admin/ticketing', label: 'Ticketing' },
-]
-
-const visibleNavItems = computed(() => {
+const visibleNavItems = computed<NavItem[]>(() => {
   const arche = activeSites.sites.find(s => s.id === activeSites.activeId)?.archetype
-  if (arche === 'keystone') return keystoneNavItems
-  if (arche === 'hearth') return hearthNavItems
-  if (arche === 'vault') return vaultNavItems
-  if (arche === 'mesa') return mesaNavItems
-  if (arche === 'marquee') return marqueeNavItems
-  return navItems
+  const premium = arche ? PREMIUM_NAV[arche] : undefined
+  return premium ? [...navItems, premium] : navItems
 })
 
 // Don't gate the verify page — it handles its own session flow and must always render.
@@ -227,7 +210,9 @@ function initials(email?: string) {
           <RouterLink
             v-for="n in visibleNavItems" :key="n.to" :to="n.to"
             :exact-active-class="n.exact ? 'active' : ''" active-class="active"
-          >{{ n.label }}</RouterLink>
+            :class="{ 'nav-premium': n.premium }"
+            :title="n.premium ? 'Premium add-on' : undefined"
+          >{{ n.label }}<span v-if="n.premium" class="nav-premium__star" aria-label="Premium add-on">★</span></RouterLink>
         </div>
       </nav>
     </header>
@@ -331,6 +316,15 @@ function initials(email?: string) {
 .admin-nav a.active {
   color: var(--adm-text);
   border-bottom-color: var(--adm-accent);
+}
+/* Premium feature tab — gold-tinted with a star so it reads as an add-on. */
+.admin-nav a.nav-premium { color: var(--adm-accent); font-weight: 600; }
+.admin-nav a.nav-premium:hover { color: var(--adm-accent-deep, var(--adm-accent)); }
+.nav-premium__star {
+  font-size: 0.6rem;
+  margin-left: 0.3rem;
+  vertical-align: super;
+  opacity: 0.9;
 }
 
 /* ── Site switcher (custom pill + popover, mirrors user pill) ───────────── */
