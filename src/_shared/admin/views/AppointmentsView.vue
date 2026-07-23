@@ -1,7 +1,14 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { contentClient, type BookingConfigDTO, type BookingServiceDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import NumberInput from '../components/inputs/NumberInput.vue'
+import TimezoneSelect from '../components/inputs/TimezoneSelect.vue'
+
+/** Service ids are derived from the label — owners never hand-write slugs. */
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+}
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
@@ -147,7 +154,7 @@ watch(siteId, load)
   <section class="adm-page">
     <header class="adm-page__head">
       <div>
-        <span class="adm-eyebrow">Premium add-on</span>
+        <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Appointments</h1>
         <p class="adm-subtitle">
           Let visitors self-book services on your contact page. Define your services, set your hours,
@@ -170,7 +177,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loading…</p>
+      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -187,20 +194,18 @@ watch(siteId, load)
 
           <ul v-if="services.length" class="svc-list">
             <li v-for="(s, i) in services" :key="i" class="svc-row">
-              <input class="adm-input svc-row__id" v-model="s.id" placeholder="id (e.g. haircut)" />
-              <input class="adm-input svc-row__label" v-model="s.label" placeholder="Label" />
+              <input class="adm-input svc-row__label" v-model="s.label" placeholder="Label (e.g. Haircut)" @change="!s.id && (s.id = slugify(s.label))" />
               <input class="adm-input svc-row__desc" v-model="s.description" placeholder="Short description" />
-              <input class="adm-input svc-row__dur" type="number" min="5" step="5" v-model.number="s.durationMinutes" />
+              <div class="svc-row__dur"><NumberInput :model-value="s.durationMinutes" :min="5" :step="5" unit="min" @update:model-value="(v: number) => s.durationMinutes = v" /></div>
               <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeService(i)">Remove</button>
             </li>
           </ul>
-          <p v-else class="adm-muted adm-mb">No services yet — add one to get started.</p>
+          <p v-else class="adm-muted adm-mb">No services yet â€” add one to get started.</p>
 
           <div class="svc-row svc-row--new">
-            <input class="adm-input svc-row__id" v-model="newService.id" placeholder="id (kebab-case)" />
-            <input class="adm-input svc-row__label" v-model="newService.label" placeholder="Label" />
+            <input class="adm-input svc-row__label" v-model="newService.label" placeholder="Label (e.g. Haircut)" @change="newService.id = slugify(newService.label)" />
             <input class="adm-input svc-row__desc" v-model="newService.description" placeholder="Description" />
-            <input class="adm-input svc-row__dur" type="number" min="5" step="5" v-model.number="newService.durationMinutes" />
+            <div class="svc-row__dur"><NumberInput :model-value="newService.durationMinutes" :min="5" :step="5" unit="min" @update:model-value="(v: number) => newService.durationMinutes = v" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addService">Add</button>
           </div>
         </section>
@@ -219,29 +224,17 @@ watch(siteId, load)
             </label>
           </div>
           <div v-if="resolved" class="hours-meta">
-            <label class="adm-field">
-              <span>Timezone</span>
-              <input class="adm-input" v-model="resolved.timezone" />
-            </label>
-            <label class="adm-field">
-              <span>Slot granularity (min)</span>
-              <input class="adm-input" type="number" min="5" step="5" v-model.number="resolved.slotMinutes" />
-            </label>
-            <label class="adm-field">
-              <span>Min lead (hrs)</span>
-              <input class="adm-input" type="number" min="0" v-model.number="resolved.minLeadHours" />
-            </label>
-            <label class="adm-field">
-              <span>Window (days)</span>
-              <input class="adm-input" type="number" min="1" max="180" v-model.number="resolved.windowDays" />
-            </label>
+            <TimezoneSelect v-model="resolved.timezone" label="Timezone" />
+            <NumberInput v-model="resolved.slotMinutes" label="Slot granularity" :min="5" :step="5" unit="min" />
+            <NumberInput v-model="resolved.minLeadHours" label="Min lead" :min="0" unit="hrs" />
+            <NumberInput v-model="resolved.windowDays" label="Booking window" :min="1" :max="180" unit="days" />
           </div>
         </section>
       </div>
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Saving…' : 'Save settings' }}
+          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -261,7 +254,7 @@ watch(siteId, load)
               <td>{{ b.name }}</td>
               <td>
                 <a :href="`mailto:${b.email}`">{{ b.email }}</a>
-                <template v-if="b.phone"> · {{ b.phone }}</template>
+                <template v-if="b.phone"> Â· {{ b.phone }}</template>
               </td>
               <td>
                 <span class="adm-badge" :class="b.status === 'cancelled' ? 'adm-badge--warn' : 'adm-badge--info'">{{ b.status }}</span>
