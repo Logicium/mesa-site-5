@@ -35,8 +35,10 @@ const COMMON_HEAD: TabDef[] = [
   { id: 'photos',  label: 'Photos'  },
   { id: 'story',   label: 'Story'   },
 ]
+// Testimonials moved to the standalone "Reviews" admin tab (it was redundant
+// to have both a Reviews tab and a Testimonials content tab). Source choice
+// (hand-written vs live Google) now lives there too.
 const COMMON_TAIL: TabDef[] = [
-  { id: 'testimonials', label: 'Testimonials' },
   { id: 'social',       label: 'Social'       },
 ]
 
