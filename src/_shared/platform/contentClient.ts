@@ -90,6 +90,10 @@ export const contentClient = {
   },
   setPassword: (password: string) =>
     request<{ ok: true }>('POST', `/auth/set-password`, { password }),
+  /** Owner-initiated deletion of their account + all data. Takes sites offline
+      and disconnects third-party integrations immediately; final purge follows. */
+  requestAccountDeletion: () =>
+    request<{ ok: true; sitesAffected: number; purgeWithinDays: number }>('POST', `/admin/account/deletion-request`),
   me: () => request<{ owner: { id: string; email: string; name?: string; hasPassword?: boolean } }>('GET', '/auth/me'),
   logout: async () => {
     clearSessionToken()
@@ -142,6 +146,11 @@ export const contentClient = {
   generateCopy: (siteId: string, field: string, prompt: string, context?: Record<string, unknown>) =>
     request<{ options: string[] }>('POST', `/admin/sites/${siteId}/ai/copy`, { field, prompt, context }),
 
+  /** Vision: read a photo of a printed menu into structured categories + items (text only). */
+  scanMenu: (siteId: string, contentType: string, base64: string) =>
+    request<{ categories: Array<{ name: string; description?: string; items: Array<{ name: string; description?: string; price?: string }> }> }>(
+      'POST', `/admin/sites/${siteId}/ai/scan-menu`, { contentType, base64 }),
+
   listOrders: () => request<Array<{ id: string; archetype: string; plan: string; status: string; siteId?: string; createdAt: string; failureReason?: string }>>('GET', '/admin/orders'),
   retryOrder: (orderId: string) => request<{ ok: true }>('POST', `/admin/orders/${orderId}/retry`),
   /** Order-level Stripe diagnostic (works for pending orders with no site yet). */
@@ -175,7 +184,9 @@ export const contentClient = {
   }>('GET', `/admin/sites/${siteId}/deployment-status${deploymentId ? `?deploymentId=${encodeURIComponent(deploymentId)}` : ''}`),
 
   /** Compare the site's recorded template commit against the latest commit on the template repo. */
-  getUpdateStatus: (siteId: string) => request<{ current: string | null; latest: string | null; hasUpdate: boolean; neverChecked?: boolean }>('GET', `/admin/sites/${siteId}/update-status`),
+  getUpdateStatus: (siteId: string) => request<{ current: string | null; latest: string | null; hasUpdate: boolean; neverChecked?: boolean; autoUpdate?: boolean; lastAutoUpdateAt?: string | null }>('GET', `/admin/sites/${siteId}/update-status`),
+
+  setAutoUpdate: (siteId: string, enabled: boolean) => request<{ ok: true; autoUpdate: boolean }>('POST', `/admin/sites/${siteId}/auto-update`, { enabled }),
   /** Queue a job that syncs template files into the customer's repo and triggers a redeploy. */
   updateSite: (siteId: string) => request<{ ok: true; jobId: string | number }>('POST', `/admin/sites/${siteId}/update`),
   /** Force a fresh provisioning run for a stuck site (idempotent — reuses existing repo/project). */
