@@ -21,6 +21,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 const length = computed(() => (props.modelValue ?? '').length)
 const showCounter = computed(() => props.maxlength > 0)
 const isOver = computed(() => props.maxlength > 0 && length.value > props.maxlength)
+const remaining = computed(() => props.maxlength - length.value)
 </script>
 
 <template>
@@ -35,7 +36,8 @@ const isOver = computed(() => props.maxlength > 0 && length.value > props.maxlen
       @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
     />
     <span v-if="showCounter" class="ta-field__counter" aria-hidden="true">
-      {{ length }}/{{ maxlength }}
+      <template v-if="isOver">{{ -remaining }} over</template>
+      <template v-else>{{ remaining }} / {{ maxlength }} characters left</template>
     </span>
   </div>
 </template>
@@ -50,7 +52,7 @@ const isOver = computed(() => props.maxlength > 0 && length.value > props.maxlen
   display: block;
   width: 100%;
   margin: 0;
-  padding: 0.55rem 0.75rem 1.4rem;
+  padding: 0.55rem 0.75rem;
   background: var(--adm-surface-2);
   color: var(--adm-text);
   border: 1px solid var(--adm-border);
@@ -69,19 +71,20 @@ const isOver = computed(() => props.maxlength > 0 && length.value > props.maxlen
   border-color: var(--adm-accent);
   box-shadow: 0 0 0 3px var(--adm-accent-glow);
 }
+/* Minimalist "characters left" label sits BELOW the field, right-aligned, so
+   it never overlaps the text being typed. */
 .ta-field__counter {
-  position: absolute;
-  right: 0.55rem;
-  bottom: 0.35rem;
-  padding: 0.05rem 0.4rem;
+  display: block;
+  margin: 0.25rem 0.1rem 0 0;
+  text-align: right;
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
-  color: var(--adm-text-muted);
-  background: color-mix(in srgb, var(--adm-surface) 75%, transparent);
-  border-radius: 999px;
+  letter-spacing: 0.02em;
+  color: var(--adm-text-subtle);
   pointer-events: none;
 }
 .ta-field--over .ta-field__counter {
   color: var(--adm-danger);
+  font-weight: 600;
 }
 </style>
