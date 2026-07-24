@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, Globe, Code2, User, Save, Loader2, AlertCircle, Trash2, Plus } from 'lucide-vue-next'
+import { RouterLink, useRoute } from 'vue-router'
+import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, Globe, Code2, User, Save, Loader2, AlertCircle, Trash2, Plus, Pencil, CornerRightDown, ImagePlus } from 'lucide-vue-next'
 import { useSiteTheme } from '../composables/useSiteTheme'
 import { useSectionFlash } from '../composables/useSectionFlash'
+import { useContentEditor } from '../composables/useContentEditor'
 import { usePreferences } from '../composables/usePreferences'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useSiteContentStore } from '../platform/siteContentStore'
@@ -63,15 +64,21 @@ const SITE_STYLES = ['1', '2', '3'] as const
 const SITE_STYLE_LABEL = 'Site style'
 const SITE_STYLE_LABELS: Record<string, string> = { '1': 'Default', '2': 'Alt', '3': 'Bold' }
 
-type Tab = 'theme' | 'color' | 'style' | 'sections' | 'global' | 'config'
+type Tab = 'edit' | 'theme' | 'color' | 'style' | 'sections' | 'global' | 'config'
 const TAB_STORAGE_KEY = 'ap-switcher-tab'
 function readTab(): Tab {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY)
-    if (v === 'theme' || v === 'color' || v === 'style' || v === 'sections' || v === 'global' || v === 'config') return v
+    if (v === 'edit' || v === 'theme' || v === 'color' || v === 'style' || v === 'sections' || v === 'global' || v === 'config') return v
   } catch { /* storage unavailable */ }
   return 'theme'
 }
+
+// ── Live content editor (in-situ + generated form) ──
+const editor = useContentEditor()
+// Re-bind the in-situ elements after navigating to a new page while editing.
+const route = useRoute()
+watch(() => route.fullPath, () => editor.rescan())
 const tab = ref<Tab>(readTab())
 watch(tab, (v) => { try { localStorage.setItem(TAB_STORAGE_KEY, v) } catch { /* */ } })
 const open = ref(false)
@@ -422,12 +429,86 @@ watch(() => prefs.value.themeAutosave, (on) => {
         </p>
 
         <div class="ap-switcher__tabs" role="tablist">
+          <button type="button" role="tab" class="ap-switcher__tab ap-switcher__tab--edit" :class="{ 'is-active': tab === 'edit' }" @click="tab = 'edit'"><Pencil :size="14" /><span>edit</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'theme' }" @click="tab = 'theme'"><Palette :size="14" /><span>theme</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'color' }" @click="tab = 'color'"><SwatchBook :size="14" /><span>color</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'style' }" @click="tab = 'style'"><LayoutTemplate :size="14" /><span>style</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'sections' }" @click="tab = 'sections'"><LayoutGrid :size="14" /><span>sections</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'global' }" @click="tab = 'global'"><Globe :size="14" /><span>global</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'config' }" @click="tab = 'config'"><Code2 :size="14" /><span>config</span></button>
+        </div>
+
+        <!-- Edit content -->
+        <div v-show="tab === 'edit'" class="ap-switcher__panel">
+          <div class="ap-switcher__span">
+            <button
+              type="button"
+              class="ap-edit-toggle"
+              :class="{ 'is-on': editor.editMode.value }"
+              @click="editor.toggle()"
+            >
+              <span class="ap-edit-toggle__track"><span class="ap-edit-toggle__thumb" /></span>
+              <span class="ap-edit-toggle__label">
+                <strong>{{ editor.editMode.value ? 'Editing the page' : 'Edit content on the page' }}</strong>
+                <small>{{ editor.editMode.value ? 'Click any text to edit it, or use the fields below.' : 'Turn on to edit text directly on the page.' }}</small>
+              </span>
+            </button>
+
+            <template v-if="editor.editMode.value">
+              <div v-if="!editor.fields.value.length" class="ap-switcher__hint">No editable text found on this page yet.</div>
+
+              <div class="ap-edit-scroll">
+                <div v-for="grp in editor.groups.value" :key="grp.name" class="ap-edit-group">
+                  <p class="ap-edit-group__title">{{ grp.label }}</p>
+                  <div
+                    v-for="f in grp.items"
+                    :key="f.path"
+                    class="ap-edit-field"
+                    :class="{ 'is-active': editor.activePath.value === f.path }"
+                  >
+                    <button type="button" class="ap-edit-field__label" :title="`Scroll to ${f.label}`" @click="editor.focusField(f.path)">
+                      <CornerRightDown :size="12" /> {{ f.label }}
+                    </button>
+                    <button
+                      v-if="f.type === 'image'"
+                      type="button"
+                      class="ap-edit-imgbtn"
+                      :title="`Replace ${f.label}`"
+                      @click="editor.focusField(f.path); editor.replaceImage(f.path)"
+                    >
+                      <img :src="editor.getByPath(f.path)" alt="" class="ap-edit-imgbtn__thumb" />
+                      <span class="ap-edit-imgbtn__cta"><ImagePlus :size="13" /> Replace</span>
+                    </button>
+                    <textarea
+                      v-else-if="f.multiline"
+                      class="ap-edit-field__input"
+                      rows="2"
+                      :value="editor.getByPath(f.path)"
+                      @focus="editor.focusField(f.path)"
+                      @input="editor.setByPath(f.path, ($event.target as HTMLTextAreaElement).value)"
+                    />
+                    <input
+                      v-else
+                      class="ap-edit-field__input"
+                      :value="editor.getByPath(f.path)"
+                      @focus="editor.focusField(f.path)"
+                      @input="editor.setByPath(f.path, ($event.target as HTMLInputElement).value)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="editor.canPersist.value" class="ap-edit-save">
+                <button type="button" class="ap-switcher__chip" :disabled="editor.saving.value || !editor.dirty.value.size" @click="editor.save(false)">Save draft</button>
+                <button type="button" class="ap-switcher__chip is-active" :disabled="editor.saving.value || !editor.dirty.value.size" @click="editor.save(true)">
+                  {{ editor.saving.value ? 'Saving…' : 'Publish' }}
+                </button>
+                <span v-if="editor.saveMsg.value" class="ap-edit-save__msg">{{ editor.saveMsg.value }}</span>
+                <span v-else-if="editor.dirty.value.size" class="ap-edit-save__msg">{{ editor.dirty.value.size }} change{{ editor.dirty.value.size === 1 ? '' : 's' }}</span>
+              </div>
+              <p v-else class="ap-switcher__hint">Sign in as the site owner to save your changes.</p>
+            </template>
+          </div>
         </div>
 
         <!-- Theme -->
@@ -446,14 +527,23 @@ watch(() => prefs.value.themeAutosave, (on) => {
           </div>
           <div class="ap-switcher__span">
             <p class="ap-eyebrow">Color</p>
-            <p class="ap-switcher__hint">
-              Palettes moved to the <strong>color</strong> tab — grouped by color theory, with a builder for your own.
-            </p>
-            <div class="ap-switcher__row">
-              <button type="button" class="ap-switcher__chip ap-switcher__chip--icon" @click="tab = 'color'">
-                <SwatchBook :size="14" /> Open Color Lab · {{ currentSwatch?.label ?? swatchName }}
+            <div class="ap-switcher__colors">
+              <button
+                v-for="s in SWATCH_LIST" :key="s.name" type="button"
+                class="ap-color" :class="{ 'is-active': swatchName === s.name }"
+                :title="s.label" :aria-label="s.label"
+                @click="setSwatch(s.name)"
+              >
+                <span class="ap-color__chip" aria-hidden="true">
+                  <span :style="{ background: s.primary }" />
+                  <span :style="{ background: s.accent }" />
+                </span>
+                <span class="ap-color__name">{{ s.label }}</span>
               </button>
             </div>
+            <button type="button" class="ap-switcher__studio-link" @click="tab = 'color'">
+              <SwatchBook :size="13" /> Fine-tune in the Color Studio
+            </button>
           </div>
         </div>
 
@@ -465,7 +555,7 @@ watch(() => prefs.value.themeAutosave, (on) => {
                 <span class="ap-lab__theory-name">{{ grp.label }}</span>
                 <span class="ap-lab__theory-harmony">{{ grp.harmony }}</span>
               </div>
-              <p class="ap-lab__theory-psy">{{ grp.psychology }}</p>
+              <p class="ap-lab__theory-psy" :title="grp.psychology">{{ grp.psychology }}</p>
               <div class="ap-lab__swatches">
                 <button
                   v-for="s in grp.items"
@@ -1068,11 +1158,14 @@ watch(() => prefs.value.themeAutosave, (on) => {
   font-size: 0.68rem; color: var(--ap-ink-muted);
   font-style: italic;
 }
+/* One-line mood summary — keeps the Color Studio compact (the multi-line
+   paragraph made each theory group far too tall). Full text on hover. */
 .ap-lab__theory-psy {
-  margin: 0.15rem 0 0.5rem;
-  font-size: 0.72rem; line-height: 1.45;
+  margin: 0.1rem 0 0.5rem;
+  font-size: 0.72rem; line-height: 1.4;
   color: var(--ap-ink-muted);
-  max-width: 58ch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
 }
 .ap-lab__swatches {
   display: grid;
@@ -1198,6 +1291,122 @@ watch(() => prefs.value.themeAutosave, (on) => {
   color: var(--ap-ink-muted);
 }
 .ap-switcher__span { grid-column: 1 / -1; }
+
+/* ── Edit-content tab ── */
+.ap-switcher__tab--edit.is-active :deep(svg),
+.ap-switcher__tab--edit:hover :deep(svg) { color: var(--ap-primary); }
+
+.ap-edit-toggle {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  padding: 0.7rem 0.8rem; margin-bottom: 0.5rem;
+  background: var(--ap-surface-alt); color: var(--ap-ink);
+  border: 1px solid color-mix(in srgb, var(--ap-line) 80%, transparent);
+  border-radius: 12px; cursor: pointer; text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.ap-edit-toggle.is-on { border-color: var(--ap-primary); background: color-mix(in srgb, var(--ap-primary) 8%, var(--ap-surface-alt)); }
+.ap-edit-toggle__track {
+  width: 40px; height: 24px; flex-shrink: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--ap-ink) 20%, transparent);
+  position: relative; transition: background 180ms ease;
+}
+.ap-edit-toggle.is-on .ap-edit-toggle__track { background: var(--ap-primary); }
+.ap-edit-toggle__thumb {
+  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+.ap-edit-toggle.is-on .ap-edit-toggle__thumb { transform: translateX(16px); }
+.ap-edit-toggle__label { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ap-edit-toggle__label strong { font-size: 0.86rem; }
+.ap-edit-toggle__label small { font-size: 0.72rem; color: var(--ap-ink-muted); line-height: 1.35; }
+
+.ap-edit-scroll { max-height: 44vh; overflow-y: auto; margin: 0 -0.2rem; padding: 0 0.2rem; }
+.ap-edit-group { margin-bottom: 0.85rem; }
+.ap-edit-group__title {
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ap-ink-muted); margin: 0.4rem 0 0.35rem;
+}
+.ap-edit-field { margin-bottom: 0.5rem; padding: 0.15rem; border-radius: 8px; }
+.ap-edit-field.is-active { background: color-mix(in srgb, var(--ap-primary) 10%, transparent); }
+.ap-edit-field__label {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: none; border: 0; padding: 0 0 0.2rem; cursor: pointer;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--ap-ink-muted);
+}
+.ap-edit-field__label:hover { color: var(--ap-primary); }
+.ap-edit-field__input {
+  width: 100%; padding: 0.4rem 0.55rem;
+  background: var(--ap-surface); color: var(--ap-ink);
+  border: 1px solid color-mix(in srgb, var(--ap-line) 85%, transparent);
+  border-radius: 8px; font: inherit; font-size: 0.82rem; line-height: 1.4;
+  resize: vertical;
+}
+.ap-edit-field__input:focus { outline: none; border-color: var(--ap-primary); }
+
+/* Image field: thumbnail + hover "Replace" overlay */
+.ap-edit-imgbtn {
+  position: relative; display: block; width: 100%; padding: 0; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ap-line) 85%, transparent);
+  border-radius: 8px; overflow: hidden; background: var(--ap-surface-alt);
+  aspect-ratio: 16 / 9;
+}
+.ap-edit-imgbtn:hover { border-color: var(--ap-primary); }
+.ap-edit-imgbtn__thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ap-edit-imgbtn__cta {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+  background: rgba(0,0,0,0.42); color: #fff; font-size: 0.76rem; font-weight: 600;
+  opacity: 0; transition: opacity 140ms ease;
+}
+.ap-edit-imgbtn:hover .ap-edit-imgbtn__cta { opacity: 1; }
+
+.ap-edit-save {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  margin-top: 0.75rem; padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--ap-line) 60%, transparent);
+}
+.ap-edit-save__msg { font-size: 0.74rem; color: var(--ap-ink-muted); }
+
+/* ── Quick color toggles on the Theme tab — just colors, no descriptions ── */
+.ap-switcher__colors {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+.ap-color {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.3rem 0.45rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ap-line) 80%, transparent);
+  border-radius: 999px;
+  cursor: pointer; font: inherit;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.ap-color:hover { border-color: var(--ap-ink); }
+.ap-color.is-active {
+  border-color: var(--ap-ink);
+  background: color-mix(in srgb, var(--ap-ink) 8%, transparent);
+}
+.ap-color__chip {
+  display: inline-flex; flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ap-ink) 18%, transparent);
+}
+.ap-color__chip span { flex: 1; display: block; }
+.ap-color__name {
+  font-size: 0.74rem; color: var(--ap-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ap-switcher__studio-link {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  margin-top: 0.6rem;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--ap-primary); font: inherit; font-size: 0.76rem; font-weight: 600;
+}
+.ap-switcher__studio-link:hover { text-decoration: underline; }
 
 /* Config tab: code preview */
 .ap-switcher__code {
