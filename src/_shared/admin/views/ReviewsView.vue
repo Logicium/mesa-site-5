@@ -2,9 +2,61 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { contentClient, type GooglePlacePreview } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import SegmentedInput from '../components/inputs/SegmentedInput.vue'
+import TextAreaField from '../../components/forms/TextAreaField.vue'
+import { useToast } from '../composables/useToast'
 
 const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
+const toast = useToast()
+
+// ── Hand-written testimonials + source choice (moved here from the old
+//    Content › Testimonials tab so all review controls live in one place). ──
+interface Testimonial { quote: string; author: string; source?: string }
+// The full content draft is held so we only ever overwrite the two keys we own
+// (reviewsSource + testimonials) and never clobber the rest of the payload.
+const draftPayload = ref<Record<string, unknown> | null>(null)
+const reviewsSource = ref<'manual' | 'google'>('manual')
+const testimonials = ref<Testimonial[]>([])
+const contentSaving = ref(false)
+
+async function loadContent() {
+  draftPayload.value = null
+  reviewsSource.value = 'manual'
+  testimonials.value = []
+  if (!siteId.value) return
+  try {
+    const d = await contentClient.getDraft(siteId.value)
+    draftPayload.value = d.payload
+    reviewsSource.value = d.payload.reviewsSource === 'google' ? 'google' : 'manual'
+    testimonials.value = Array.isArray(d.payload.testimonials) ? (d.payload.testimonials as Testimonial[]) : []
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function addTestimonial() { testimonials.value.push({ quote: '', author: '', source: '' }) }
+function removeTestimonial(i: number) { testimonials.value.splice(i, 1) }
+
+async function saveContent(publish: boolean) {
+  if (!siteId.value || !draftPayload.value) return
+  contentSaving.value = true
+  try {
+    const payload = { ...draftPayload.value, reviewsSource: reviewsSource.value, testimonials: testimonials.value }
+    if (publish) {
+      const r = await contentClient.publish(siteId.value, payload)
+      toast.success(`Published v${r.version}`)
+    } else {
+      const r = await contentClient.saveDraft(siteId.value, payload)
+      toast.success(`Draft saved · v${r.version}`)
+    }
+    draftPayload.value = payload
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    contentSaving.value = false
+  }
+}
 
 type Candidate = { placeId: string; name: string; address: string; rating: number | null; totalRatings: number | null }
 
@@ -112,8 +164,8 @@ function stars(rating: number) {
   return '★★★★★'.slice(0, full) + '☆☆☆☆☆'.slice(0, 5 - full)
 }
 
-onMounted(loadConnection)
-watch(siteId, loadConnection)
+onMounted(() => { void loadConnection(); void loadContent() })
+watch(siteId, () => { void loadConnection(); void loadContent() })
 </script>
 
 <template>
@@ -121,18 +173,51 @@ watch(siteId, loadConnection)
     <header class="adm-page__head">
       <div class="adm-page__title-block">
         <span class="adm-eyebrow">Reputation</span>
-        <h1 class="adm-title">Google Reviews</h1>
-        <p class="adm-subtitle">Pull live ratings and reviews from your Google Business Profile.</p>
+        <h1 class="adm-title">Reviews</h1>
+        <p class="adm-subtitle">Show hand-written testimonials or pull live ratings straight from your Google Business Profile.</p>
       </div>
     </header>
 
     <div v-if="!siteId" class="adm-empty">
       <div class="adm-empty__icon">⌗</div>
       <h2 class="adm-empty__title">No active site</h2>
-      <p class="adm-empty__body">Select a site from the header to manage its Google reviews.</p>
+      <p class="adm-empty__body">Select a site from the header to manage its reviews.</p>
     </div>
 
     <template v-else>
+      <!-- ── Source choice + hand-written testimonials ── -->
+      <div class="adm-card rv-testimonials">
+        <SegmentedInput
+          v-model="reviewsSource"
+          label="Show on the public site"
+          :options="[
+            { value: 'manual', label: 'Hand-written testimonials' },
+            { value: 'google', label: 'Live Google reviews' },
+          ]"
+          hint="Live reviews pull from the Google business connected below. If none are available, the site falls back to the hand-written list."
+        />
+
+        <div class="rv-tst">
+          <div v-for="(t, i) in testimonials" :key="i" class="rv-tst__row">
+            <TextAreaField v-model="t.quote" :rows="2" :maxlength="400" placeholder="Quote…" />
+            <div class="rv-tst__meta">
+              <input class="adm-input" v-model="t.author" placeholder="Author name" />
+              <input class="adm-input" v-model="t.source" placeholder="Source (Google, Yelp…)" />
+              <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" @click="removeTestimonial(i)">Remove</button>
+            </div>
+          </div>
+          <p v-if="!testimonials.length" class="adm-muted rv-tst__empty">
+            No testimonials yet. Add a few favorite quotes from happy customers.
+          </p>
+          <button type="button" class="adm-btn adm-btn--sm rv-tst__add" @click="addTestimonial">+ Add testimonial</button>
+        </div>
+
+        <div class="rv-tst__save">
+          <button type="button" class="adm-btn adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(false)">Save draft</button>
+          <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(true)">Publish</button>
+        </div>
+      </div>
+
       <div v-if="connected" class="rv-connected">
         <div class="rv-card rv-summary">
           <div class="rv-summary__head">
@@ -270,6 +355,25 @@ watch(siteId, loadConnection)
   border-radius: var(--adm-radius-lg);
   padding: 1.5rem;
 }
+
+/* Testimonials + source block (merged in from the old content tab) */
+.rv-testimonials { display: flex; flex-direction: column; gap: 1.1rem; margin-bottom: 1.25rem; }
+.rv-tst { display: flex; flex-direction: column; gap: 0.85rem; }
+.rv-tst__row {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 0.9rem;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-radius);
+}
+.rv-tst__meta { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; align-items: center; }
+.rv-tst__empty { margin: 0; font-size: 0.88rem; }
+.rv-tst__add { align-self: flex-start; }
+.rv-tst__save {
+  display: flex; gap: 0.6rem; align-items: center;
+  padding-top: 0.9rem; border-top: 1px solid var(--adm-border-soft);
+}
+@media (max-width: 640px) { .rv-tst__meta { grid-template-columns: 1fr; } }
 
 .rv-connected { display: flex; flex-direction: column; gap: 1.25rem; }
 
