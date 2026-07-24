@@ -32,6 +32,20 @@ export interface MesaSiteConfig {
   menu: { intro?: string; categories: MenuCategory[]; fullMenuUrl?: string }
   testimonials: Array<{ quote: string; author: string; source?: string }>
   social: Array<{ label: string; href: string }>
+  /** Editable section headers (eyebrows / titles / notes) so owners have full
+   *  control over every heading on the site, not just body copy. */
+  sections: {
+    story: { eyebrow: string }
+    gallery: { eyebrow: string; title: string }
+    featured: { eyebrow: string; title: string }
+    hours: { eyebrow: string; title: string; note: string }
+    reviews: { eyebrow: string }
+    galleryPage: { eyebrow: string; title: string }
+    menuPage: { eyebrow: string; title: string }
+    order: { eyebrow: string; title: string }
+    visit: { eyebrow: string; title: string; subtitle: string }
+    contact: { title: string }
+  }
 }
 
 /**
@@ -120,4 +134,16 @@ export const siteConfig: MesaSiteConfig = reactive(({
     { label: 'Instagram', href: 'https://instagram.com' },
     { label: 'Facebook', href: 'https://facebook.com' },
   ],
+  sections: {
+    story: { eyebrow: 'Our story' },
+    gallery: { eyebrow: 'From the kitchen', title: 'A look around' },
+    featured: { eyebrow: 'Tonight', title: 'A few favorites' },
+    hours: { eyebrow: 'Visit', title: 'When to come by', note: 'Brunch and dinner. Reservations recommended on weekends.' },
+    reviews: { eyebrow: 'Kind words' },
+    galleryPage: { eyebrow: 'Gallery', title: 'The kitchen, the room, the food' },
+    menuPage: { eyebrow: 'Eat with us', title: 'The full menu' },
+    order: { eyebrow: 'Order', title: 'Order for pickup' },
+    visit: { eyebrow: 'Visit', title: 'Find your seat', subtitle: 'We are easy to find on Main Street, with parking on the cross streets.' },
+    contact: { title: 'Reservations & questions' },
+  },
 }))

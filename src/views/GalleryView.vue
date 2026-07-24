@@ -7,8 +7,8 @@ import GallerySection from '@apotome/archetype-shared/components/sections/Galler
 <template>
   <HeroSection
     subpage
-    eyebrow="Gallery"
-    title="The kitchen, the room, the food"
+    :eyebrow="siteConfig.sections.galleryPage.eyebrow"
+    :title="siteConfig.sections.galleryPage.title"
     :image="siteConfig.photos.about.src"
     :image-alt="siteConfig.photos.about.alt"
   />

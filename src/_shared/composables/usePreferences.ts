@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { getStoredToken } from '../platform/contentClient'
+import { DEMO_MODE } from '../platform/config'
 
 /**
  * User-level UI preferences persisted in localStorage. Currently controls the
@@ -50,6 +51,10 @@ export function usePreferences() {
   }
 
   const themePickerVisible = computed(() => {
+    // Demo/showcase builds always expose the picker so visitors can play with
+    // themes. Real template sites keep it owner-only (a live site's visitors
+    // must not be able to restyle it unless the owner is signed in).
+    if (DEMO_MODE) return true
     const mode = state.value.themePickerVisible
     if (mode === 'on') return true
     if (mode === 'off') return false

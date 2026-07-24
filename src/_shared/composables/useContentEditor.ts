@@ -28,6 +28,13 @@ export interface EditField {
   value: string
   multiline: boolean
   type: 'text' | 'image'
+  /** Soft word target for multiline fields, shown as the "y" in an x/y counter. */
+  softMax?: number
+}
+
+export function wordCount(s: string): number {
+  const t = (s ?? '').trim()
+  return t ? t.split(/\s+/).length : 0
 }
 
 // ── Module-level singletons (shared by the directive-free binder + the panel) ──
@@ -40,6 +47,12 @@ const saveMsg = ref<string | null>(null)
 interface Bound { el: HTMLElement; cleanup: () => void }
 let bound: Bound[] = []
 let fileInput: HTMLInputElement | null = null
+
+// A single floating "Replace photo" control shown when hovering a bound image,
+// so we never fire a file dialog just because someone clicked a picture.
+let imgOverlay: HTMLButtonElement | null = null
+let overlayPath: string | null = null
+let overlayHideTimer = 0
 
 // Keys / values we never expose as editable text (ids, colors, urls, images…).
 const SKIP_KEYS = new Set([
@@ -79,6 +92,8 @@ function labelFor(path: string): string {
   return segs.slice(-2).map(prettify).join(' · ')
 }
 function norm(s: string): string { return s.replace(/\s+/g, ' ').trim() }
+/** A gentle word target derived from the field's initial length (the "y" in x/y). */
+function softTarget(value: string): number { return Math.max(24, Math.ceil(wordCount(value) * 1.6)) }
 
 function walk(obj: Record<string, unknown>, prefix: string, out: EditField[]): void {
   const group = (p: string, k: string) => p.split('.')[0] || k
@@ -87,14 +102,16 @@ function walk(obj: Record<string, unknown>, prefix: string, out: EditField[]): v
     if (isImageValue(k, v)) {
       out.push({ path, label: labelFor(path), group: group(prefix, k), value: v, multiline: false, type: 'image' })
     } else if (isEditableValue(k, v)) {
-      out.push({ path, label: labelFor(path), group: group(prefix, k), value: v, multiline: v.length > 70, type: 'text' })
+      const ml = v.length > 70
+      out.push({ path, label: labelFor(path), group: group(prefix, k), value: v, multiline: ml, type: 'text', softMax: ml ? softTarget(v) : undefined })
     } else if (Array.isArray(v)) {
       v.forEach((item, i) => {
         const ip = `${path}.${i}`
         if (isImageValue(k, item)) {
           out.push({ path: ip, label: `${prettify(k)} #${i + 1}`, group: group(prefix, k), value: item as string, multiline: false, type: 'image' })
         } else if (isEditableValue(k, item)) {
-          out.push({ path: ip, label: `${prettify(k)} #${i + 1}`, group: group(prefix, k), value: item as string, multiline: (item as string).length > 70, type: 'text' })
+          const ml = (item as string).length > 70
+          out.push({ path: ip, label: `${prettify(k)} #${i + 1}`, group: group(prefix, k), value: item as string, multiline: ml, type: 'text', softMax: ml ? softTarget(item as string) : undefined })
         } else if (item && typeof item === 'object') {
           walk(item as Record<string, unknown>, ip, out)
         }
@@ -177,6 +194,7 @@ export function useContentEditor() {
       delete b.el.dataset.editPath
     }
     bound = []
+    if (imgOverlay) { imgOverlay.style.display = 'none'; overlayPath = null }
   }
 
   function scan(): void {
@@ -239,12 +257,55 @@ export function useContentEditor() {
     bound.push({ el, cleanup: () => { el.removeEventListener('blur', onBlur, true); el.removeEventListener('focus', onFocus, true); el.contentEditable = 'inherit' } })
   }
 
+  function ensureOverlay(): HTMLButtonElement {
+    if (imgOverlay) return imgOverlay
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.textContent = '⤢ Replace photo'
+    btn.style.cssText = [
+      'position:fixed', 'z-index:2147483000', 'display:none',
+      'transform:translate(-50%,-50%)', 'align-items:center', 'gap:6px',
+      'padding:8px 14px', 'border:0', 'border-radius:999px',
+      'background:rgba(15,15,17,0.86)', 'color:#fff',
+      'font:600 12px/1 system-ui,-apple-system,sans-serif', 'cursor:pointer',
+      'box-shadow:0 6px 20px rgba(0,0,0,0.4)', 'backdrop-filter:blur(6px)',
+    ].join(';')
+    btn.addEventListener('mouseenter', () => window.clearTimeout(overlayHideTimer))
+    btn.addEventListener('mouseleave', hideOverlaySoon)
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation()
+      if (overlayPath) { activePath.value = overlayPath; replaceImage(overlayPath) }
+    })
+    document.body.appendChild(btn)
+    imgOverlay = btn
+    return btn
+  }
+  function showOverlayOver(img: HTMLElement, path: string): void {
+    window.clearTimeout(overlayHideTimer)
+    overlayPath = path
+    const r = img.getBoundingClientRect()
+    const btn = ensureOverlay()
+    btn.style.left = `${r.left + r.width / 2}px`
+    btn.style.top = `${r.top + r.height / 2}px`
+    btn.style.display = 'inline-flex'
+  }
+  function hideOverlaySoon(): void {
+    overlayHideTimer = window.setTimeout(() => { if (imgOverlay) imgOverlay.style.display = 'none'; overlayPath = null }, 140)
+  }
+
   function bindImg(img: HTMLImageElement, path: string): void {
     img.dataset.editPath = path
     img.classList.add('ap-editable-img')
-    const onClick = (e: Event) => { e.preventDefault(); e.stopPropagation(); activePath.value = path; replaceImage(path) }
-    img.addEventListener('click', onClick, true)
-    bound.push({ el: img, cleanup: () => img.removeEventListener('click', onClick, true) })
+    const onEnter = () => { activePath.value = path; showOverlayOver(img, path) }
+    const onLeave = () => hideOverlaySoon()
+    img.addEventListener('mouseenter', onEnter)
+    img.addEventListener('mouseleave', onLeave)
+    bound.push({ el: img, cleanup: () => {
+      img.removeEventListener('mouseenter', onEnter)
+      img.removeEventListener('mouseleave', onLeave)
+      img.classList.remove('ap-editable-img')
+      delete img.dataset.editPath
+    } })
   }
 
   /** Open a file picker and set `path` to the chosen image (as a data URL, so it
@@ -289,19 +350,14 @@ export function useContentEditor() {
   function rescan(): void { if (editMode.value) void nextTick(scan) }
 
   // ── Persistence (owners only) ──
-  function setDeep(target: Record<string, unknown>, path: string, value: unknown): void {
-    const segs = path.split('.')
-    let cur: Record<string, unknown> | unknown[] = target
-    for (let i = 0; i < segs.length - 1; i++) {
-      const seg = segs[i]!
-      const nextIsIndex = /^\d+$/.test(segs[i + 1]!)
-      const c = cur as Record<string, unknown>
-      if (c[seg] == null || typeof c[seg] !== 'object') c[seg] = nextIsIndex ? [] : {}
-      cur = c[seg] as Record<string, unknown>
-    }
-    ;(cur as Record<string, unknown>)[segs[segs.length - 1]!] = value
-  }
-
+  /**
+   * Publish (or draft-save) a FULL snapshot of the live content. `root.value` is
+   * the reactive siteConfig that already holds build-time defaults + the server
+   * overlay + every edit made this session (each `setByPath` writes into it), so
+   * a plain deep-clone captures everything. This replaced an earlier getDraft +
+   * per-path merge that could silently drop edits — the bug where the editor said
+   * "Published" but nothing actually persisted.
+   */
   async function save(publish: boolean): Promise<void> {
     if (!canPersist.value || !dirty.value.size) return
     saving.value = true
@@ -309,14 +365,13 @@ export function useContentEditor() {
     try {
       const id = await store.resolveOwnedSiteId()
       if (!id) throw new Error('Could not resolve this site.')
-      const draft = await contentClient.getDraft(id).catch(() => null)
-      const payload = JSON.parse(JSON.stringify(draft?.payload ?? {})) as Record<string, unknown>
-      for (const path of dirty.value) setDeep(payload, path, getByPath(path))
+      if (!root.value) throw new Error('No content loaded to save.')
+      const payload = JSON.parse(JSON.stringify(root.value)) as Record<string, unknown>
       if (publish) await contentClient.publish(id, payload)
       else await contentClient.saveDraft(id, payload)
       dirty.value = new Set()
-      saveMsg.value = publish ? 'Published' : 'Draft saved'
-      setTimeout(() => { saveMsg.value = null }, 2200)
+      saveMsg.value = publish ? 'Published — live in a moment' : 'Draft saved'
+      setTimeout(() => { saveMsg.value = null }, 3000)
     } catch (e) {
       saveMsg.value = e instanceof Error ? e.message : String(e)
     } finally {
@@ -327,5 +382,6 @@ export function useContentEditor() {
   return {
     editMode, fields, groups, dirty, activePath, saving, saveMsg, canPersist,
     getByPath, setByPath, enable, disable, toggle, rescan, focusField, replaceImage, save,
+    wordCount,
   }
 }

@@ -13,8 +13,8 @@ const showOrdering = computed(() => store.hasAddOn('ordering'))
 <template>
   <HeroSection
     subpage
-    eyebrow="Eat with us"
-    title="The full menu"
+    :eyebrow="siteConfig.sections.menuPage.eyebrow"
+    :title="siteConfig.sections.menuPage.title"
     :subtitle="siteConfig.menu.intro"
     :image="siteConfig.photos.hero.src"
     :image-alt="siteConfig.photos.hero.alt"
@@ -22,8 +22,8 @@ const showOrdering = computed(() => store.hasAddOn('ordering'))
 
   <OrderingSection
     v-if="showOrdering"
-    eyebrow="Order"
-    title="Order for pickup"
+    :eyebrow="siteConfig.sections.order.eyebrow"
+    :title="siteConfig.sections.order.title"
     intro="Pick your items, choose a pickup time, and we'll have it ready."
   />
 

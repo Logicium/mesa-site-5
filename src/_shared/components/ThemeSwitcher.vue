@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { ChevronDown, Settings, Copy, Check, Download, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, Globe, Code2, User, Save, Loader2, AlertCircle, Trash2, Plus, Pencil, CornerRightDown, ImagePlus } from 'lucide-vue-next'
+import { ChevronDown, Settings, Check, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, Globe, User, Save, Loader2, AlertCircle, Trash2, Plus, Pencil, CornerRightDown, ImagePlus, Move, Maximize2, Minimize2, X } from 'lucide-vue-next'
 import { useSiteTheme } from '../composables/useSiteTheme'
 import { useSectionFlash } from '../composables/useSectionFlash'
 import { useContentEditor } from '../composables/useContentEditor'
@@ -64,12 +64,12 @@ const SITE_STYLES = ['1', '2', '3'] as const
 const SITE_STYLE_LABEL = 'Site style'
 const SITE_STYLE_LABELS: Record<string, string> = { '1': 'Default', '2': 'Alt', '3': 'Bold' }
 
-type Tab = 'edit' | 'theme' | 'color' | 'style' | 'sections' | 'global' | 'config'
+type Tab = 'edit' | 'theme' | 'color' | 'style' | 'sections' | 'global'
 const TAB_STORAGE_KEY = 'ap-switcher-tab'
 function readTab(): Tab {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY)
-    if (v === 'edit' || v === 'theme' || v === 'color' || v === 'style' || v === 'sections' || v === 'global' || v === 'config') return v
+    if (v === 'edit' || v === 'theme' || v === 'color' || v === 'style' || v === 'sections' || v === 'global') return v
   } catch { /* storage unavailable */ }
   return 'theme'
 }
@@ -81,8 +81,133 @@ const route = useRoute()
 watch(() => route.fullPath, () => editor.rescan())
 const tab = ref<Tab>(readTab())
 watch(tab, (v) => { try { localStorage.setItem(TAB_STORAGE_KEY, v) } catch { /* */ } })
-const open = ref(false)
+// ── Window management: docked / floating / fullscreen, persisted ──────────
+const WIN_KEY = 'ap-switcher-win-v1'
+interface WinState { open: boolean; detached: boolean; fullscreen: boolean; winPos: { x: number; y: number }; winSize: { w: number; h: number } }
+function loadWin(): Partial<WinState> {
+  try { const raw = localStorage.getItem(WIN_KEY); if (raw) return JSON.parse(raw) as WinState } catch { /* */ }
+  return {}
+}
+const _w = loadWin()
+const BAR = { w: 236, h: 58 }        // the floating minimized bar
+
+const rootEl = ref<HTMLElement | null>(null)
+const open = ref(_w.open ?? false)
+const detached = ref(_w.detached ?? false)
+const fullscreen = ref(_w.fullscreen ?? false)
+const dragging = ref(false)          // suppresses the morph transition while dragging/resizing
+const winPos = ref(_w.winPos ?? { x: 0, y: 0 })
+const winSize = ref(_w.winSize?.w ? _w.winSize : { w: 400, h: 560 })
+
 function toggle() { open.value = !open.value }
+
+// Persist the full window state so a reload restores the picker exactly.
+watch([open, detached, fullscreen, winPos, winSize], () => {
+  try {
+    localStorage.setItem(WIN_KEY, JSON.stringify({
+      open: open.value, detached: detached.value, fullscreen: fullscreen.value,
+      winPos: winPos.value, winSize: winSize.value,
+    }))
+  } catch { /* */ }
+}, { deep: true })
+
+function fixedBox(left: string, top: string, w: string, h: string): Record<string, string> {
+  return { position: 'fixed', left, top, width: w, minWidth: w, maxWidth: w, height: h, minHeight: h, maxHeight: h }
+}
+const winStyle = computed<Record<string, string>>(() => {
+  // We pin width/height AND min/max on both axes: the base rule
+  // `width: var(--ap-switcher-pill-w)` otherwise wins and collapses the panel.
+  if (fullscreen.value) return fixedBox('0px', '0px', '100vw', '100dvh')
+  if (detached.value) {
+    const w = open.value ? winSize.value.w : (pillWidth.value || BAR.w)
+    const h = open.value ? winSize.value.h : BAR.h
+    return fixedBox(`${winPos.value.x}px`, `${winPos.value.y}px`, `${w}px`, `${h}px`)
+  }
+  return { '--ap-switcher-h': `${panelHeight.value}px`, '--ap-switcher-pill-w': `${pillWidth.value}px` }
+})
+
+function detach() {
+  // Float the window near where the docked panel sits (bottom-right) at a
+  // comfortable working size. (The docked rect can be the collapsed pill, so we
+  // use sensible defaults rather than inheriting a tiny width/height.)
+  const w = Math.round(Math.min(window.innerWidth - 24, winSize.value.w || 400))
+  const h = Math.round(Math.min(window.innerHeight * 0.74, winSize.value.h || 560))
+  winSize.value = { w, h }
+  winPos.value = {
+    x: Math.max(12, window.innerWidth - w - 20),
+    y: Math.max(12, window.innerHeight - h - 16),
+  }
+  detached.value = true; fullscreen.value = false; open.value = true
+}
+/** Return a floating/fullscreen window to the docked corner pill. */
+function dock() { detached.value = false; fullscreen.value = false; open.value = false }
+/** Collapse in place: floating window → its own floating bar; docked → pill;
+ *  fullscreen → back to the floating window. */
+function minimize() {
+  if (fullscreen.value) { fullscreen.value = false; return }
+  open.value = false
+}
+function toggleFullscreen() {
+  if (!fullscreen.value && !detached.value) detach() // dock → float → fill reads as one motion
+  fullscreen.value = !fullscreen.value
+  if (fullscreen.value) open.value = true
+}
+// On mount, keep a restored floating window on-screen if the viewport changed.
+onMounted(() => {
+  if (detached.value && !fullscreen.value) {
+    winPos.value = {
+      x: Math.min(Math.max(0, winPos.value.x), Math.max(0, window.innerWidth - 60)),
+      y: Math.min(Math.max(0, winPos.value.y), Math.max(0, window.innerHeight - 44)),
+    }
+  }
+})
+function clampPos(x: number, y: number) {
+  return { x: Math.min(Math.max(0, x), Math.max(0, window.innerWidth - 60)), y: Math.min(Math.max(0, y), Math.max(0, window.innerHeight - 40)) }
+}
+function startDrag(e: PointerEvent) {
+  if (!detached.value || fullscreen.value) return
+  dragging.value = true
+  const sx = e.clientX, sy = e.clientY, ox = winPos.value.x, oy = winPos.value.y
+  const move = (ev: PointerEvent) => { winPos.value = clampPos(ox + ev.clientX - sx, oy + ev.clientY - sy) }
+  const up = () => { dragging.value = false; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+function startResize(e: PointerEvent) {
+  if (!detached.value || fullscreen.value) return
+  e.preventDefault(); e.stopPropagation()
+  dragging.value = true
+  const sx = e.clientX, sy = e.clientY, ow = winSize.value.w, oh = winSize.value.h
+  const move = (ev: PointerEvent) => {
+    winSize.value = {
+      w: Math.min(Math.max(300, ow + ev.clientX - sx), window.innerWidth - 20),
+      h: Math.min(Math.max(280, oh + ev.clientY - sy), window.innerHeight - 20),
+    }
+  }
+  const up = () => { dragging.value = false; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+// The floating minimized bar is draggable too; distinguish a drag from a click
+// so a plain click still expands it.
+let barJustDragged = false
+function startBarDrag(e: PointerEvent) {
+  if (!detached.value || open.value || fullscreen.value) return
+  const sx = e.clientX, sy = e.clientY, ox = winPos.value.x, oy = winPos.value.y
+  let moved = false
+  const move = (ev: PointerEvent) => {
+    if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return
+    moved = true; dragging.value = true
+    winPos.value = clampPos(ox + ev.clientX - sx, oy + ev.clientY - sy)
+  }
+  const up = () => {
+    dragging.value = false; barJustDragged = moved
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+function onPillClick() {
+  if (barJustDragged) { barJustDragged = false; return } // it was a drag, keep it collapsed
+  toggle()
+}
 
 /* ── Section-flash registry ──
    Each setting's eyebrow label is clickable; clicking scrolls to the element
@@ -105,42 +230,8 @@ function jumpTo(key: keyof typeof sectionTargets) {
 }
 
 /* ── Config export (mirrors the original archetype-project switcher) ── */
-const copied = ref(false)
 const currentSwatch = computed(() =>
   SWATCH_LIST.find(s => s.name === swatchName.value) ?? customSwatches.value.find(s => s.name === swatchName.value))
-const configSnippet = computed(() => JSON.stringify({
-  theme: themeName.value,
-  swatch: swatchName.value,
-  variant: variant.value,
-  alignment: alignment.value,
-  heroStyle: heroStyle.value,
-  subheroStyle: subheroStyle.value,
-  footerStyle: footerStyle.value,
-  siteStyle: siteStyle.value,
-  sections: {
-    contact: contactStyle.value,
-    hours: hoursStyle.value,
-    gallery: galleryStyle.value,
-    reviews: reviewsStyle.value,
-  },
-}, null, 2))
-
-function copyConfig() {
-  navigator.clipboard.writeText(configSnippet.value).then(() => {
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  })
-}
-
-function downloadConfig() {
-  const blob = new Blob([configSnippet.value], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `archetype-config-${themeName.value}-${swatchName.value}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 /* ── Palette builder (Color Lab) ──
    Pick a hue, a harmony model, and a mode; the builder derives a complete
@@ -319,12 +410,10 @@ watch(() => prefs.value.themeAutosave, (on) => {
 
 <template>
   <div
+    ref="rootEl"
     class="ap-switcher"
-    :class="{ 'is-open': open, 'is-settled': settled }"
-    :style="{
-      '--ap-switcher-h': panelHeight + 'px',
-      '--ap-switcher-pill-w': pillWidth + 'px',
-    }"
+    :class="{ 'is-open': open, 'is-settled': settled, 'is-detached': detached, 'is-fullscreen': fullscreen, 'is-dragging': dragging }"
+    :style="winStyle"
   >
     <!-- Hidden ghost pill used purely for width measurement. Lives in the
          DOM at all times so we always know the natural collapsed width,
@@ -343,14 +432,15 @@ watch(() => prefs.value.themeAutosave, (on) => {
       </span>
     </span>
 
-    <!-- Collapsed pill (kept in the DOM so width can animate; hidden when open) -->
+    <!-- Collapsed pill: the docked pill AND the floating minimized bar. -->
     <button
       type="button"
       class="ap-switcher__pill"
-      :class="{ 'is-hidden': pillHidden }"
+      :class="{ 'is-hidden': pillHidden, 'is-bar': detached && !open }"
       :aria-hidden="pillHidden"
       :tabindex="pillHidden ? -1 : 0"
-      @click="toggle"
+      @pointerdown="startBarDrag"
+      @click="onPillClick"
       aria-label="Open site settings"
     >
       <span class="ap-switcher__pill-chip" aria-hidden="true">
@@ -369,8 +459,15 @@ watch(() => prefs.value.themeAutosave, (on) => {
          single height value at a time and animates in a single fluid motion. -->
     <div class="ap-switcher__expand">
       <div ref="panelEl" class="ap-switcher__panel-wrap">
-        <div class="ap-switcher__head">
-          <span class="ap-switcher__title">Site settings</span>
+        <div
+          class="ap-switcher__head"
+          :class="{ 'is-draggable': detached && !fullscreen }"
+          @pointerdown="startDrag"
+        >
+          <span class="ap-switcher__title">
+            <Move v-if="detached && !fullscreen" :size="13" class="ap-switcher__drag-icon" />
+            Site settings
+          </span>
           <RouterLink
             v-if="auth.owner"
             to="/admin/account"
@@ -381,8 +478,20 @@ watch(() => prefs.value.themeAutosave, (on) => {
             <User :size="14" />
             <span>Account</span>
           </RouterLink>
-          <button type="button" class="ap-switcher__close" @click="toggle" aria-label="Close">
-            <ChevronDown :size="18" />
+          <!-- Window controls -->
+          <div class="ap-switcher__wins" @pointerdown.stop>
+            <button v-if="!detached && !fullscreen" type="button" class="ap-switcher__winbtn" title="Detach — drag it anywhere" @click="detach">
+              <Move :size="15" />
+            </button>
+            <button v-else-if="detached && !fullscreen" type="button" class="ap-switcher__winbtn" title="Dock back to the corner" @click="dock">
+              <CornerDownRight :size="15" />
+            </button>
+            <button type="button" class="ap-switcher__winbtn" :title="fullscreen ? 'Exit full screen' : 'Full screen'" @click="toggleFullscreen">
+              <component :is="fullscreen ? Minimize2 : Maximize2" :size="15" />
+            </button>
+          </div>
+          <button type="button" class="ap-switcher__close" @click="minimize" :aria-label="detached && !fullscreen ? 'Minimize to a floating bar' : 'Minimize'">
+            <component :is="fullscreen ? X : ChevronDown" :size="18" />
           </button>
         </div>
 
@@ -435,7 +544,6 @@ watch(() => prefs.value.themeAutosave, (on) => {
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'style' }" @click="tab = 'style'"><LayoutTemplate :size="14" /><span>style</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'sections' }" @click="tab = 'sections'"><LayoutGrid :size="14" /><span>sections</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'global' }" @click="tab = 'global'"><Globe :size="14" /><span>global</span></button>
-          <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'config' }" @click="tab = 'config'"><Code2 :size="14" /><span>config</span></button>
         </div>
 
         <!-- Edit content -->
@@ -473,20 +581,28 @@ watch(() => prefs.value.themeAutosave, (on) => {
                       v-if="f.type === 'image'"
                       type="button"
                       class="ap-edit-imgbtn"
-                      :title="`Replace ${f.label}`"
+                      :class="{ 'is-empty': !editor.getByPath(f.path) }"
+                      :title="editor.getByPath(f.path) ? `Replace ${f.label}` : `Add ${f.label}`"
                       @click="editor.focusField(f.path); editor.replaceImage(f.path)"
                     >
-                      <img :src="editor.getByPath(f.path)" alt="" class="ap-edit-imgbtn__thumb" />
-                      <span class="ap-edit-imgbtn__cta"><ImagePlus :size="13" /> Replace</span>
+                      <img v-if="editor.getByPath(f.path)" :src="editor.getByPath(f.path)" alt="" class="ap-edit-imgbtn__thumb" />
+                      <span class="ap-edit-imgbtn__cta">
+                        <ImagePlus :size="13" /> {{ editor.getByPath(f.path) ? 'Replace' : 'Upload image' }}
+                      </span>
                     </button>
-                    <textarea
-                      v-else-if="f.multiline"
-                      class="ap-edit-field__input"
-                      rows="2"
-                      :value="editor.getByPath(f.path)"
-                      @focus="editor.focusField(f.path)"
-                      @input="editor.setByPath(f.path, ($event.target as HTMLTextAreaElement).value)"
-                    />
+                    <div v-else-if="f.multiline" class="ap-edit-ta">
+                      <textarea
+                        class="ap-edit-field__input ap-edit-field__input--ta"
+                        rows="4"
+                        :value="editor.getByPath(f.path)"
+                        @focus="editor.focusField(f.path)"
+                        @input="editor.setByPath(f.path, ($event.target as HTMLTextAreaElement).value)"
+                      />
+                      <span
+                        class="ap-edit-ta__count"
+                        :class="{ 'is-over': editor.wordCount(editor.getByPath(f.path)) > (f.softMax || 0) }"
+                      >{{ editor.wordCount(editor.getByPath(f.path)) }}/{{ f.softMax }} words</span>
+                    </div>
                     <input
                       v-else
                       class="ap-edit-field__input"
@@ -766,26 +882,16 @@ watch(() => prefs.value.themeAutosave, (on) => {
             </div>
           </div>
         </div>
-
-        <!-- Config -->
-        <div v-show="tab === 'config'" class="ap-switcher__panel">
-          <div class="ap-switcher__span">
-            <p class="ap-eyebrow">Current configuration</p>
-            <pre class="ap-switcher__code">{{ configSnippet }}</pre>
-            <div class="ap-switcher__row">
-              <button type="button" class="ap-switcher__chip ap-switcher__chip--icon" @click="copyConfig">
-                <component :is="copied ? Check : Copy" :size="14" />
-                {{ copied ? 'Copied' : 'Copy JSON' }}
-              </button>
-              <button type="button" class="ap-switcher__chip ap-switcher__chip--icon" @click="downloadConfig">
-                <Download :size="14" />
-                Download .json
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
+    <!-- Resize grip — only on the open floating window (not the minimized bar) -->
+    <div
+      v-if="detached && open && !fullscreen"
+      class="ap-switcher__resize"
+      title="Drag to resize"
+      @pointerdown="startResize"
+      aria-hidden="true"
+    />
   </div>
 </template>
 
@@ -819,6 +925,10 @@ watch(() => prefs.value.themeAutosave, (on) => {
      The closed-state spec delays width by the height duration; the open-state
      spec removes that delay so width leads on the way in. */
   width: var(--ap-switcher-pill-w, max-content);
+  /* Floor the width at the measured pill width. Without this, returning from a
+     detached/fullscreen float can leave the `width` computing to ~0 and the
+     docked panel collapses to an invisible sliver. */
+  min-width: var(--ap-switcher-pill-w, max-content);
   max-width: min(640px, calc(100vw - 2rem));
   transition: width 360ms cubic-bezier(0.2, 0.7, 0.3, 1) 520ms,
               border-radius 360ms ease 520ms,
@@ -987,6 +1097,89 @@ watch(() => prefs.value.themeAutosave, (on) => {
 /* Chevron points down by default (in open state — clicking collapses).
    Pre-rotate so the icon visually invites "click to close". */
 .ap-switcher.is-open .ap-switcher__close { transform: rotate(0deg); }
+
+/* ── Window controls (detach / resize / fullscreen) ── */
+.ap-switcher__title { margin-right: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
+.ap-switcher__drag-icon { opacity: 0.5; }
+.ap-switcher__wins { display: inline-flex; gap: 1px; margin-right: 0.3rem; flex-shrink: 0; }
+.ap-switcher__winbtn {
+  display: grid; place-items: center; width: 28px; height: 28px;
+  border: 0; background: none; color: var(--ap-ink-muted); cursor: pointer; border-radius: 7px;
+  transition: background 140ms ease, color 140ms ease;
+}
+.ap-switcher__winbtn:hover { background: color-mix(in srgb, var(--ap-ink) 9%, transparent); color: var(--ap-ink); }
+.ap-switcher__head.is-draggable { cursor: move; touch-action: none; user-select: none; }
+
+/* Detached / fullscreen: break out of the docked corner + height animation so
+   the panel fills the window and its content scrolls. A robust flex chain
+   (root → expand → panel-wrap) lets the panel-wrap own the scroll. */
+.ap-switcher.is-detached, .ap-switcher.is-fullscreen {
+  bottom: auto; right: auto; max-width: none;
+  display: flex; flex-direction: column; overflow: hidden;
+  /* Override the collapsed pill's 999px radius — otherwise a large floating
+     window renders as a giant oval that clips the header controls. */
+  border-radius: 18px;
+  /* One calm, continuous morph across EVERY size property (incl. min/max on
+     both axes, since we pin those) so resizing/minimizing/fullscreen flow
+     smoothly instead of jumping. Slower + gentle ease for a settled feel. */
+  transition:
+    left 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    top 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    width 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    min-width 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    max-width 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    height 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    min-height 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    max-height 620ms cubic-bezier(0.4, 0.02, 0.2, 1),
+    border-radius 520ms ease;
+}
+/* While dragging or resizing, follow the pointer 1:1 (no lag). */
+.ap-switcher.is-dragging { transition: none !important; }
+.ap-switcher.is-fullscreen { border-radius: 0; }
+/* The floating MINIMIZED bar (detached + closed) is a pill. */
+.ap-switcher.is-detached:not(.is-open) { border-radius: 999px; }
+
+/* Only the OPEN floating window fills + scrolls; the closed bar just shows the
+   pill. Scoping to .is-open lets the panel collapse to the bar cleanly. */
+.ap-switcher.is-detached.is-open .ap-switcher__expand,
+.ap-switcher.is-fullscreen .ap-switcher__expand {
+  height: auto !important; flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: none;
+}
+.ap-switcher.is-detached.is-open .ap-switcher__panel-wrap,
+.ap-switcher.is-fullscreen .ap-switcher__panel-wrap {
+  flex: 1 1 auto; min-height: 0; height: auto; max-height: none;
+  overflow-y: auto; overflow-x: hidden; opacity: 1;
+}
+.ap-switcher.is-detached.is-open .ap-edit-scroll,
+.ap-switcher.is-fullscreen .ap-edit-scroll { max-height: none; overflow: visible; }
+/* Hide the visible pill when the floating window is OPEN (and in fullscreen);
+   it stays as the bar when the floating window is closed. Never touch the
+   measurement ghost (nested), or `pillWidth` measures 0. */
+.ap-switcher.is-detached.is-open > .ap-switcher__pill,
+.ap-switcher.is-fullscreen > .ap-switcher__pill { display: none; }
+/* The floating bar's pill fills its compact box and can be grabbed to move. */
+.ap-switcher__pill.is-bar { height: 100%; cursor: grab; touch-action: none; }
+.ap-switcher__pill.is-bar:active { cursor: grabbing; }
+/* Pin the header above the scrolling content while floating/fullscreen. */
+.ap-switcher.is-detached.is-open .ap-switcher__head,
+.ap-switcher.is-fullscreen .ap-switcher__head {
+  position: sticky; top: 0; z-index: 3;
+  background: color-mix(in srgb, var(--ap-surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.ap-switcher__resize {
+  position: absolute; right: 3px; bottom: 3px; width: 18px; height: 18px;
+  cursor: nwse-resize; z-index: 6; touch-action: none; border-radius: 0 0 8px 0;
+  background: linear-gradient(135deg, transparent 45%,
+    color-mix(in srgb, var(--ap-ink) 28%, transparent) 45%,
+    color-mix(in srgb, var(--ap-ink) 28%, transparent) 55%, transparent 55%,
+    transparent 70%,
+    color-mix(in srgb, var(--ap-ink) 28%, transparent) 70%,
+    color-mix(in srgb, var(--ap-ink) 28%, transparent) 80%, transparent 80%);
+}
 
 /* ── Save / autosave row ───────────────────────────────── */
 .ap-switcher__save {
@@ -1344,6 +1537,28 @@ watch(() => prefs.value.themeAutosave, (on) => {
   resize: vertical;
 }
 .ap-edit-field__input:focus { outline: none; border-color: var(--ap-primary); }
+
+/* Long-paragraph textarea: taller, with an x/y word counter in the corner */
+.ap-edit-ta { position: relative; }
+.ap-edit-field__input--ta { min-height: 6.5rem; line-height: 1.5; padding-bottom: 1.4rem; }
+.ap-edit-ta__count {
+  position: absolute; right: 0.5rem; bottom: 0.4rem;
+  font-size: 0.64rem; font-variant-numeric: tabular-nums;
+  color: var(--ap-ink-muted); pointer-events: none;
+  background: color-mix(in srgb, var(--ap-surface) 82%, transparent);
+  padding: 0.05rem 0.3rem; border-radius: 5px;
+}
+.ap-edit-ta__count.is-over { color: #e0574a; }
+
+/* Empty image field: dashed "upload" state instead of a broken thumbnail */
+.ap-edit-imgbtn.is-empty {
+  aspect-ratio: 16 / 7; border-style: dashed;
+  border-color: var(--ap-line); background: var(--ap-surface);
+}
+.ap-edit-imgbtn.is-empty .ap-edit-imgbtn__cta {
+  position: static; inset: auto; opacity: 1;
+  background: none; color: var(--ap-primary); height: 100%;
+}
 
 /* Image field: thumbnail + hover "Replace" overlay */
 .ap-edit-imgbtn {
