@@ -28,6 +28,47 @@
 html, body, #app { margin: 0; padding: 0; }
 body { overflow-x: clip; }   /* contain accidental horizontal bleed (e.g. full-bleed marquees) */
 
+/* ── In-situ content editor (theme picker "Edit content" mode) ──
+   When editing is on, every content-bound text element is made editable and
+   gets a subtle dotted affordance; hover/focus deepen it. The flash is used
+   when a field in the editor panel links + scrolls to its element. */
+html.ap-editing [data-edit-path] {
+  outline: 1px dashed color-mix(in srgb, var(--ap-primary, #8a6d3b) 55%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+  cursor: text;
+  transition: outline-color 140ms ease, background-color 140ms ease;
+}
+html.ap-editing [data-edit-path]:hover {
+  outline-color: var(--ap-primary, #8a6d3b);
+  background: color-mix(in srgb, var(--ap-primary, #8a6d3b) 7%, transparent);
+}
+html.ap-editing [data-edit-path]:focus {
+  outline: 2px solid var(--ap-primary, #8a6d3b);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--ap-primary, #8a6d3b) 6%, transparent);
+}
+/* Editable images: dashed frame + a camera/replace hint on hover. */
+html.ap-editing img.ap-editable-img {
+  outline: 2px dashed color-mix(in srgb, var(--ap-primary, #8a6d3b) 60%, transparent);
+  outline-offset: 2px;
+  cursor: pointer;
+  transition: outline-color 140ms ease, filter 140ms ease;
+}
+html.ap-editing img.ap-editable-img:hover {
+  outline-color: var(--ap-primary, #8a6d3b);
+  filter: brightness(0.82);
+}
+@keyframes ap-edit-flash {
+  0%, 100% { background: transparent; box-shadow: none; }
+  20%      { background: color-mix(in srgb, var(--ap-primary, #8a6d3b) 22%, transparent);
+             box-shadow: 0 0 0 4px color-mix(in srgb, var(--ap-primary, #8a6d3b) 22%, transparent); }
+}
+[data-edit-path].ap-edit-flash { animation: ap-edit-flash 1.3s ease; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  [data-edit-path].ap-edit-flash { animation: none; outline: 2px solid var(--ap-primary, #8a6d3b); }
+}
+
 /* ── Section-flash highlight (used by ThemeSwitcher to indicate which
    element a setting affects). A slow inverted-colors pulse on the target. */
 @keyframes ap-flash-invert {
