@@ -8,7 +8,7 @@
  * one contextual primary action, and a kebab menu for everything else.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ExternalLink, MoreHorizontal, Pencil, RefreshCw, Rocket, Camera, Receipt, Wrench, Archive, ArchiveRestore, GitCommitHorizontal, Clock } from 'lucide-vue-next'
+import { ExternalLink, MoreHorizontal, Pencil, RefreshCw, RefreshCwOff, Rocket, Camera, Receipt, Wrench, Archive, ArchiveRestore, GitCommitHorizontal, Clock } from 'lucide-vue-next'
 
 export interface SiteRow {
   id: string
@@ -31,6 +31,8 @@ export interface UpdateStatusRow {
   latest: string | null
   hasUpdate: boolean
   neverChecked?: boolean
+  autoUpdate?: boolean
+  lastAutoUpdateAt?: string | null
 }
 
 export interface DeployProgressRow {
@@ -85,6 +87,7 @@ const emit = defineEmits<{
   rename: [name: string]
   'check-update': []
   update: []
+  'toggle-auto-update': [enabled: boolean]
   redeploy: []
   reprovision: []
   'refresh-screenshot': []
@@ -277,6 +280,10 @@ function menuAction(fn: () => void) {
             <button v-if="liveUrl" type="button" role="menuitem" :disabled="updateChecking" @click="menuAction(() => emit('check-update'))">
               <RefreshCw :size="13" /> {{ updateChecking ? 'Checking…' : 'Check for updates' }}
             </button>
+            <button v-if="liveUrl" type="button" role="menuitem" @click="menuAction(() => emit('toggle-auto-update', !(updateStatus?.autoUpdate ?? true)))">
+              <component :is="(updateStatus?.autoUpdate ?? true) ? RefreshCwOff : RefreshCw" :size="13" />
+              {{ (updateStatus?.autoUpdate ?? true) ? 'Turn off auto-updates' : 'Turn on auto-updates' }}
+            </button>
             <button v-if="liveUrl" type="button" role="menuitem" :disabled="redeploying" @click="menuAction(() => emit('redeploy'))">
               <Rocket :size="13" /> {{ redeploying ? 'Triggering…' : 'Redeploy' }}
             </button>
@@ -332,8 +339,16 @@ function menuAction(fn: () => void) {
               <span class="sc__pulse" aria-hidden="true" /> {{ (updateStatus.current ?? '').slice(0, 7) || '?' }} → {{ updateStatus.latest.slice(0, 7) }}
             </span>
             <span v-else class="sc__update-note sc__update-note--muted">version unverified</span>
+            <span v-if="(updateStatus?.autoUpdate ?? true)" class="sc__update-note sc__update-note--auto" title="This site updates itself automatically when the template advances — updating now is optional.">
+              <RefreshCw :size="11" /> auto
+            </span>
           </template>
-          <span v-else-if="updateStatus" class="sc__update-note sc__update-note--ok">✓ Up to date</span>
+          <template v-else-if="updateStatus">
+            <span class="sc__update-note sc__update-note--ok">✓ Up to date</span>
+            <span v-if="(updateStatus?.autoUpdate ?? true)" class="sc__update-note sc__update-note--auto" title="This site updates itself automatically when the template advances.">
+              <RefreshCw :size="11" /> auto
+            </span>
+          </template>
         </template>
         <button
           v-else-if="isStuck"
@@ -617,6 +632,14 @@ function menuAction(fn: () => void) {
 }
 .sc__update-note--ok { color: #34d399; font-family: inherit; }
 .sc__update-note--muted { color: var(--adm-text-subtle); font-family: inherit; }
+.sc__update-note--auto {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  color: var(--adm-accent); font-family: inherit;
+  padding: 0.1rem 0.45rem; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--adm-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--adm-accent) 10%, transparent);
+  text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.64rem; font-weight: 600;
+}
 .sc__pulse {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--adm-accent);
