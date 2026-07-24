@@ -110,74 +110,78 @@ function fmtDate(iso: string) {
           />
         </div>
 
-        <!-- ── Table view (accessibility fallback / relief) ── -->
-        <div v-if="showTable" class="adm-card an__table-wrap">
-          <table class="adm-table an__table">
-            <thead><tr><th>Date</th><th>Visitors</th><th>Pageviews</th><th>Load (ms)</th><th>Status</th></tr></thead>
-            <tbody>
-              <tr v-for="s in data.series" :key="s.date">
-                <td class="adm-muted">{{ fmtDate(s.date) }}</td>
-                <td>{{ s.visitors.toLocaleString() }}</td>
-                <td>{{ s.pageviews.toLocaleString() }}</td>
-                <td>{{ s.latencyMs || '—' }}</td>
-                <td>{{ s.up === null ? '—' : s.up ? 'Up' : 'Down' }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- ── Toggled region — a single stable, full-width column so
+             switching Table ⇄ Charts can never leave a card mis-sized. ── -->
+        <div class="an__body">
+          <!-- Table view (accessibility fallback / relief) -->
+          <div v-if="showTable" key="table" class="adm-card an__table-wrap">
+            <table class="adm-table an__table">
+              <thead><tr><th>Date</th><th>Visitors</th><th>Pageviews</th><th>Load (ms)</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr v-for="s in data.series" :key="s.date">
+                  <td class="adm-muted">{{ fmtDate(s.date) }}</td>
+                  <td>{{ s.visitors.toLocaleString() }}</td>
+                  <td>{{ s.pageviews.toLocaleString() }}</td>
+                  <td>{{ s.latencyMs || '—' }}</td>
+                  <td>{{ s.up === null ? '—' : s.up ? 'Up' : 'Down' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Charts -->
+          <div v-else key="charts" class="an__charts">
+            <div class="adm-card an__trend">
+              <div class="an__card-head">
+                <h2 class="an__card-title">Traffic over time</h2>
+              </div>
+              <TrendChart :data="data.series" />
+            </div>
+
+            <div class="an__split">
+              <div class="adm-card">
+                <div class="an__card-head"><h2 class="an__card-title">Top pages</h2></div>
+                <BarList :rows="data.topPages" mono />
+              </div>
+              <div class="adm-card">
+                <div class="an__card-head"><h2 class="an__card-title">Traffic sources</h2></div>
+                <BarList :rows="data.sources" empty-text="Mostly direct visits so far." />
+              </div>
+            </div>
+
+            <div class="an__split">
+              <div class="adm-card">
+                <div class="an__card-head"><h2 class="an__card-title">Devices</h2></div>
+                <DeviceSplit :data="data.devices" />
+              </div>
+              <div class="adm-card">
+                <div class="an__card-head"><h2 class="an__card-title">When visitors come by</h2></div>
+                <HourColumns :data="data.byHour" />
+              </div>
+            </div>
+
+            <!-- Uptime strip -->
+            <div class="adm-card">
+              <div class="an__card-head">
+                <h2 class="an__card-title">Uptime</h2>
+                <span v-if="data.uptimePct !== null" class="an__uptime-pct" :class="data.uptimePct >= 99 ? 'is-good' : data.uptimePct >= 95 ? 'is-warn' : 'is-bad'">
+                  {{ data.uptimePct }}% up
+                </span>
+              </div>
+              <div class="an__uptime">
+                <span
+                  v-for="c in uptimeCells" :key="c.date"
+                  class="an__uptime-cell"
+                  :class="`is-${c.state}`"
+                  :title="`${fmtDate(c.date)} — ${c.state === 'none' ? 'not checked' : c.state === 'up' ? `up (${c.latencyMs}ms)` : 'down'}`"
+                />
+              </div>
+              <p v-if="!hasTraffic" class="an__hint">
+                Traffic charts fill in as visitors arrive. Uptime is checked every 5 minutes automatically.
+              </p>
+            </div>
+          </div>
         </div>
-
-        <!-- ── Charts ── -->
-        <template v-else>
-          <div class="adm-card an__trend">
-            <div class="an__card-head">
-              <h2 class="an__card-title">Traffic over time</h2>
-            </div>
-            <TrendChart :data="data.series" />
-          </div>
-
-          <div class="an__split">
-            <div class="adm-card">
-              <div class="an__card-head"><h2 class="an__card-title">Top pages</h2></div>
-              <BarList :rows="data.topPages" mono />
-            </div>
-            <div class="adm-card">
-              <div class="an__card-head"><h2 class="an__card-title">Traffic sources</h2></div>
-              <BarList :rows="data.sources" empty-text="Mostly direct visits so far." />
-            </div>
-          </div>
-
-          <div class="an__split">
-            <div class="adm-card">
-              <div class="an__card-head"><h2 class="an__card-title">Devices</h2></div>
-              <DeviceSplit :data="data.devices" />
-            </div>
-            <div class="adm-card">
-              <div class="an__card-head"><h2 class="an__card-title">When visitors come by</h2></div>
-              <HourColumns :data="data.byHour" />
-            </div>
-          </div>
-
-          <!-- ── Uptime strip ── -->
-          <div class="adm-card">
-            <div class="an__card-head">
-              <h2 class="an__card-title">Uptime</h2>
-              <span v-if="data.uptimePct !== null" class="an__uptime-pct" :class="data.uptimePct >= 99 ? 'is-good' : data.uptimePct >= 95 ? 'is-warn' : 'is-bad'">
-                {{ data.uptimePct }}% up
-              </span>
-            </div>
-            <div class="an__uptime">
-              <span
-                v-for="c in uptimeCells" :key="c.date"
-                class="an__uptime-cell"
-                :class="`is-${c.state}`"
-                :title="`${fmtDate(c.date)} — ${c.state === 'none' ? 'not checked' : c.state === 'up' ? `up (${c.latencyMs}ms)` : 'down'}`"
-              />
-            </div>
-            <p v-if="!hasTraffic" class="an__hint">
-              Traffic charts fill in as visitors arrive. Uptime is checked every 5 minutes automatically.
-            </p>
-          </div>
-        </template>
       </template>
     </template>
   </section>
@@ -207,11 +211,18 @@ function fmtDate(iso: string) {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 1.1rem;
 }
-.an__trend { padding: 1.4rem 1.5rem 1.2rem; }
+/* Toggled region: always a full-width single column. Both branches (table /
+   charts) stretch to 100% so a chart card can never be squeezed narrow when
+   switching views. min-width:0 keeps SVG/table children from forcing overflow. */
+.an__body { width: 100%; }
+.an__charts { display: flex; flex-direction: column; gap: 1.5rem; width: 100%; }
+.an__charts > * { min-width: 0; }
+.an__trend { padding: 1.4rem 1.5rem 1.2rem; width: 100%; }
 .an__split {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.3rem;
 }
+.an__split > * { min-width: 0; }
 .an__card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.1rem; }
 .an__card-title {
   font-family: var(--adm-font-serif); font-weight: 500;
@@ -233,7 +244,7 @@ function fmtDate(iso: string) {
 
 .an__hint { color: var(--adm-text-subtle); font-size: 0.8rem; margin: 0.9rem 0 0; }
 
-.an__table-wrap { padding: 0; overflow-x: auto; }
+.an__table-wrap { padding: 0; overflow-x: auto; overflow-y: hidden; }
 .an__table { min-width: 520px; }
 
 @media (max-width: 720px) {
