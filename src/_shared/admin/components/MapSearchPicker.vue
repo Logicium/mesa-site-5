@@ -38,9 +38,13 @@ watch(() => props.address, (v) => {
   if (v !== query.value) query.value = v
 })
 
-function buildEmbed(placeId: string): string {
-  // Keyless embed — same URL form used by the Google Reviews admin view.
-  return `https://www.google.com/maps?q=place_id:${encodeURIComponent(placeId)}&output=embed`
+function buildEmbed(address: string): string {
+  // Keyless embed that geocodes AND zooms to the picked address. The old
+  // `q=place_id:X` form renders a fully zoomed-OUT world map on the keyless
+  // endpoint (it can't resolve a bare place_id without an API key) — which is
+  // exactly why the pin never landed on the business. Passing the formatted
+  // address with an explicit zoom drops the pin on the real location.
+  return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=16&output=embed`
 }
 
 async function search(q: string) {
@@ -72,7 +76,7 @@ function onInput(v: string) {
 function pick(h: GeoResult) {
   query.value = h.address
   emit('update:address', h.address)
-  emit('update:embedUrl', buildEmbed(h.placeId))
+  emit('update:embedUrl', buildEmbed(h.address))
   open.value = false
 }
 
