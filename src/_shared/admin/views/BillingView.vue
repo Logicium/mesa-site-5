@@ -202,7 +202,12 @@ onMounted(load)
 
 <style scoped>
 .bl-card { padding: 0; overflow: hidden; }
-.bl-table-wrap { overflow-x: auto; }
+/* overflow-x:auto forces overflow-y to compute to `auto` too, so when the
+   horizontal scrollbar appears it opens a tiny vertical scroll range that
+   traps the wheel over the table ("won't scroll past" bug). Pinning
+   overflow-y:hidden keeps horizontal scrolling without the vertical trap;
+   the wrap has no fixed height so nothing is ever clipped. */
+.bl-table-wrap { overflow-x: auto; overflow-y: hidden; }
 .bl-table { min-width: 720px; }
 .bl-actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
 .bl-detail-row > td { background: var(--adm-surface-3); padding: 1rem 1.25rem; }
