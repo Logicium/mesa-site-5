@@ -36,6 +36,32 @@ async function doLogout() {
   await auth.logout()
   router.push('/admin/login')
 }
+
+// ── Danger zone: safe self-service account + data deletion ──
+const delOpen = ref(false)
+const delConfirm = ref('')
+const delBusy = ref(false)
+const delErr = ref<string | null>(null)
+const delDone = ref<string | null>(null)
+const CONFIRM_WORD = 'DELETE'
+
+async function deleteAccount() {
+  delErr.value = null
+  if (delConfirm.value.trim().toUpperCase() !== CONFIRM_WORD) {
+    delErr.value = `Type ${CONFIRM_WORD} to confirm.`
+    return
+  }
+  delBusy.value = true
+  try {
+    const r = await contentClient.requestAccountDeletion()
+    delDone.value = `Your account is scheduled for deletion. ${r.sitesAffected} site${r.sitesAffected === 1 ? '' : 's'} taken offline and disconnected. All data is permanently removed within ${r.purgeWithinDays} days. Signing you out…`
+    setTimeout(async () => { await auth.logout(); router.push('/admin/login') }, 4000)
+  } catch (e) {
+    delErr.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    delBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -186,6 +212,40 @@ async function doLogout() {
           </ul>
         </div>
       </div>
+
+      <!-- ── Danger zone: delete account & data ── -->
+      <div class="adm-card acct-danger">
+        <h3 class="adm-card__title acct-danger__title">Delete account &amp; data</h3>
+        <p class="adm-card__sub">
+          Permanently deletes your account and everything tied to it — sites,
+          content, orders, and any connected Instagram or Google data. Your
+          sites go offline immediately; all data is erased within 30 days. This
+          can't be undone once the purge completes. See our
+          <RouterLink to="/data-deletion" class="acct-support__link">data deletion policy</RouterLink>.
+        </p>
+
+        <template v-if="!delDone">
+          <button v-if="!delOpen" type="button" class="adm-btn adm-btn--danger" @click="delOpen = true">
+            Delete my account
+          </button>
+          <div v-else class="acct-danger__confirm">
+            <label class="adm-label">
+              Type <strong>DELETE</strong> to confirm
+              <input v-model="delConfirm" type="text" class="adm-input" placeholder="DELETE" autocomplete="off" />
+            </label>
+            <div class="acct-danger__actions">
+              <button type="button" class="adm-btn adm-btn--danger" :disabled="delBusy" @click="deleteAccount">
+                {{ delBusy ? 'Deleting…' : 'Permanently delete' }}
+              </button>
+              <button type="button" class="adm-btn" :disabled="delBusy" @click="delOpen = false; delConfirm = ''; delErr = null">
+                Cancel
+              </button>
+            </div>
+            <p v-if="delErr" class="adm-msg-err">{{ delErr }}</p>
+          </div>
+        </template>
+        <p v-else class="adm-msg-ok">{{ delDone }}</p>
+      </div>
     </template>
   </section>
 </template>
@@ -232,4 +292,13 @@ async function doLogout() {
   text-decoration: none;
 }
 .acct-support__link:hover { text-decoration: underline; }
+
+/* Danger zone */
+.acct-danger {
+  margin-top: 1.25rem;
+  border-color: color-mix(in srgb, var(--adm-danger) 40%, var(--adm-border));
+}
+.acct-danger__title { color: var(--adm-danger); }
+.acct-danger__confirm { display: flex; flex-direction: column; gap: 0.75rem; max-width: 360px; }
+.acct-danger__actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 </style>
