@@ -15,7 +15,7 @@ const renaming = ref<Record<string, boolean>>({})
 
 // Deactivate / activate
 const deactivating = ref<Record<string, boolean>>({})
-const updateStatus = ref<Record<string, { current: string | null; latest: string | null; hasUpdate: boolean; neverChecked?: boolean } | null>>({})
+const updateStatus = ref<Record<string, { current: string | null; latest: string | null; hasUpdate: boolean; neverChecked?: boolean; autoUpdate?: boolean; lastAutoUpdateAt?: string | null } | null>>({})
 const updateChecking = ref<Record<string, boolean>>({})
 const updating = ref<Record<string, boolean>>({})
 const updateMsg = ref<Record<string, string>>({})
@@ -245,6 +245,18 @@ async function updateNow(siteId: string) {
   }
 }
 
+async function toggleAutoUpdate(siteId: string, enabled: boolean) {
+  // Optimistic: reflect the new state immediately, roll back on failure.
+  const prev = updateStatus.value[siteId]
+  if (prev) updateStatus.value[siteId] = { ...prev, autoUpdate: enabled }
+  try {
+    await contentClient.setAutoUpdate(siteId, enabled)
+  } catch (e) {
+    if (prev) updateStatus.value[siteId] = prev
+    updateMsg.value[siteId] = e instanceof Error ? e.message : String(e)
+  }
+}
+
 async function reprovision(siteId: string) {
   reprovisioning.value[siteId] = true
   reprovisionMsg.value[siteId] = ''
@@ -428,6 +440,7 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
         @rename="(name: string) => rename(s.id, name)"
         @check-update="checkUpdate(s.id)"
         @update="updateNow(s.id)"
+        @toggle-auto-update="toggleAutoUpdate(s.id, $event)"
         @redeploy="redeploy(s.id)"
         @reprovision="reprovision(s.id)"
         @refresh-screenshot="refreshScreenshot(s.id)"
