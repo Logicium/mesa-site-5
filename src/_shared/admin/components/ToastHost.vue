@@ -30,7 +30,9 @@ const toast = useToast()
 
 <style scoped>
 .toast-host {
-  position: fixed; right: 1.25rem; bottom: 1.25rem;
+  /* Top-right, clearing the sticky admin bar — the old bottom-right spot
+     collided with the floating theme picker. */
+  position: fixed; right: 1.25rem; top: 5.25rem;
   display: flex; flex-direction: column; gap: 0.5rem;
   z-index: 9999;
   pointer-events: none;
@@ -61,7 +63,7 @@ const toast = useToast()
 }
 .toast__close:hover { color: var(--adm-text, #f4f5f7); }
 
-.toast-enter-from { opacity: 0; transform: translateY(12px) scale(0.96); }
+.toast-enter-from { opacity: 0; transform: translateY(-12px) scale(0.96); }
 .toast-leave-to   { opacity: 0; transform: translateX(24px); }
 .toast-enter-active, .toast-leave-active {
   transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
