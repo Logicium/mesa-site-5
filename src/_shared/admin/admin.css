@@ -54,20 +54,19 @@
   --adm-chart-bad:  #d03b3b;
   --adm-chart-grid: color-mix(in srgb, var(--adm-text) 12%, transparent);
   --adm-chart-axis: color-mix(in srgb, var(--adm-text) 22%, transparent);
-}
 
-:root[data-mode='light'] {
-  --adm-chart-1: #2a78d6;
-  --adm-chart-2: #1baf7a;
-  --adm-chart-3: #eda100;
-  --adm-chart-good: #006300;
-  --adm-chart-bad:  #d03b3b;
-
-  /* Shape — deliberately tighter than the public site: the admin is a
-     tool, and tools have machined edges. */
-  --adm-radius-sm: 3px;
-  --adm-radius:    6px;
-  --adm-radius-lg: 10px;
+  /* ── Shape — ONE consistent radius language for the whole panel ──
+     sm  → controls  (inputs, buttons, chips, file buttons)
+     mid → mid depth (popovers, image frames, segmented controls)
+     lg  → surfaces  (cards, fieldsets, item editors, plates)
+     Pills stay 999px. These live on the base :root (not under
+     [data-mode='light']) so BOTH modes get the same corners — previously
+     they were light-only, leaving every dark-mode element to fall back to
+     whatever inline literal it happened to carry. That mismatch was the
+     source of the inconsistent corners across the panel. */
+  --adm-radius-sm: 10px;
+  --adm-radius:    12px;
+  --adm-radius-lg: 16px;
   --adm-shadow-sm: none;
   --adm-shadow:    none;
   --adm-shadow-lg: 0 24px 64px -32px rgba(0,0,0,0.55);
@@ -80,6 +79,14 @@
   --adm-heading-tracking: var(--ap-tracking-heading, -0.01em);
   --adm-heading-transform: var(--ap-heading-transform, none);
   --adm-heading-weight: var(--ap-heading-weight, 500);
+}
+
+:root[data-mode='light'] {
+  --adm-chart-1: #2a78d6;
+  --adm-chart-2: #1baf7a;
+  --adm-chart-3: #eda100;
+  --adm-chart-good: #006300;
+  --adm-chart-bad:  #d03b3b;
 }
 
 /* ── Layout primitives ─────────────────────────────────────── */
@@ -312,7 +319,7 @@
   width: 100%;
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
-  border-radius: 10px;
+  border-radius: var(--adm-radius-sm);
   padding: 0 0.75rem;
   min-height: 2.5rem;
   color: var(--adm-text);
@@ -338,7 +345,7 @@
   position: absolute; top: calc(100% + 0.35rem); left: 0; right: 0; z-index: 40;
   background: var(--adm-surface);
   border: 1px solid var(--adm-border-strong);
-  border-radius: 12px;
+  border-radius: var(--adm-radius);
   box-shadow: var(--adm-shadow-lg);
   overflow: hidden;
   animation: ai-pop 130ms ease both;
@@ -361,7 +368,7 @@
   padding: 0.5rem 0.6rem;
   background: none; border: none; cursor: pointer;
   color: var(--adm-text); font: inherit; font-size: 0.86rem;
-  border-radius: 8px; text-align: left;
+  border-radius: var(--adm-radius-sm); text-align: left;
   transition: background 110ms ease;
 }
 .ai-option:hover, .ai-option.is-hi { background: var(--adm-surface-2); }
@@ -438,7 +445,7 @@
 .ai-img {
   position: relative;
   border: 1.5px dashed var(--adm-border-strong);
-  border-radius: 12px;
+  border-radius: var(--adm-radius);
   background: var(--adm-surface-2);
   overflow: hidden;
   transition: border-color 140ms ease, background 140ms ease;
@@ -454,21 +461,24 @@
 .ai-img__cta svg { color: var(--adm-text-muted); }
 .ai-img__preview { position: relative; aspect-ratio: 16 / 9; }
 .ai-img__preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Image action chips are ALWAYS visible (not hover-gated) and wrap instead
+   of clipping — hover doesn't exist on touch, and in tight gallery cells the
+   chips used to overflow the frame and get cut off. */
 .ai-img__actions {
   position: absolute; inset: auto 0 0 0;
-  display: flex; justify-content: flex-end; gap: 0.35rem;
-  padding: 1.6rem 0.5rem 0.5rem;
-  background: linear-gradient(to top, rgba(10,11,14,0.75), transparent);
-  opacity: 0; transition: opacity 160ms ease;
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.3rem;
+  padding: 1.6rem 0.45rem 0.45rem;
+  background: linear-gradient(to top, rgba(10,11,14,0.78), transparent);
+  opacity: 1;
 }
-.ai-img:hover .ai-img__actions { opacity: 1; }
 .ai-img__chip {
   display: inline-flex; align-items: center; gap: 0.3rem;
   padding: 0.28rem 0.6rem; border-radius: 999px;
-  background: rgba(12,13,16,0.72); color: #fff;
-  border: 1px solid rgba(255,255,255,0.18);
-  font-size: 0.7rem; font-weight: 600; cursor: pointer;
+  background: rgba(12,13,16,0.78); color: #fff;
+  border: 1px solid rgba(255,255,255,0.22);
+  font-size: 0.7rem; font-weight: 600; cursor: pointer; white-space: nowrap;
   backdrop-filter: blur(6px);
+  transition: background 140ms ease;
 }
 .ai-img__chip:hover { background: rgba(28,30,36,0.85); }
 .ai-img__busy {
@@ -482,7 +492,7 @@
   display: inline-flex; gap: 0.2rem;
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
-  border-radius: 10px;
+  border-radius: var(--adm-radius-sm);
   padding: 0.2rem;
 }
 .ai-seg button {
@@ -523,12 +533,12 @@
 /* ── Page rhythm: generous, centered, readable ── */
 .admin-shell .admin-main .adm-page { gap: 2.4rem; max-width: 1180px; margin-inline: auto; }
 .admin-shell .admin-main .adm-page__head { padding: 2.9rem 0 1.6rem; }
-.admin-shell .admin-main .adm-card { padding: 2rem 2.2rem; border-radius: 18px; }
+.admin-shell .admin-main .adm-card { padding: 2rem 2.2rem; border-radius: var(--adm-radius-lg); }
 
 /* ── Sections (ContentView fieldsets) as editorial plates ── */
 .admin-shell .admin-main fieldset {
   border: 1px solid var(--adm-border);
-  border-radius: 18px;
+  border-radius: var(--adm-radius-lg);
   background: var(--adm-surface);
   padding: 2rem 2.2rem 2.2rem;
   margin: 0 0 1.9rem;
@@ -603,7 +613,7 @@
   padding: 1.5rem 1.6rem;
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
-  border-radius: 16px;
+  border-radius: var(--adm-radius-lg);
   margin: 0;
   transition: border-color 180ms ease, transform 180ms ease;
 }
@@ -629,7 +639,7 @@
   padding: 1.5rem 1.6rem;
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
-  border-radius: 16px;
+  border-radius: var(--adm-radius-lg);
   margin: 0 0 1.2rem;
   transition: border-color 180ms ease;
 }
@@ -652,7 +662,7 @@
   padding: 1rem;
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
-  border-radius: 14px;
+  border-radius: var(--adm-radius-lg);
 }
 
 /* ── Sticky glass save bar — the premium "always reachable" action ── */
@@ -668,11 +678,17 @@
   box-shadow: var(--adm-shadow-lg);
   width: fit-content;
 }
+/* Save-bar action buttons are pill-shaped to echo their pill container. */
+.admin-shell .admin-main .save-bar button,
+.admin-shell .admin-main .save-bar .adm-btn {
+  border-radius: 999px;
+  padding-inline: 1.35rem;
+}
 
 /* ── Small screens: keep the air, drop the padding ── */
 @media (max-width: 720px) {
   .admin-shell .admin-main .adm-card,
-  .admin-shell .admin-main fieldset { padding: 1.3rem 1.1rem 1.5rem; border-radius: 14px; }
+  .admin-shell .admin-main fieldset { padding: 1.3rem 1.1rem 1.5rem; border-radius: var(--adm-radius-lg); }
   .admin-shell .admin-main .rm-row,
   .admin-shell .admin-main .svc-row,
   .admin-shell .admin-main .testimonial-row,
