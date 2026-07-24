@@ -7,28 +7,18 @@ import { tabsForArchetype, type TabId } from '../contentSchemas'
 import AiCopyButton from '../components/AiCopyButton.vue'
 import MapSearchPicker from '../components/MapSearchPicker.vue'
 import TextAreaField from '../../components/forms/TextAreaField.vue'
-import SelectInput from '../components/inputs/SelectInput.vue'
-import SegmentedInput from '../components/inputs/SegmentedInput.vue'
 import ImageInput from '../components/inputs/ImageInput.vue'
 import ChipsInput from '../components/inputs/ChipsInput.vue'
 import IconInput from '../components/inputs/IconInput.vue'
-import { THEME_LIST } from '../../themes'
-import { SWATCH_LIST } from '../../themes/swatches'
+import SocialIconInput from '../components/inputs/SocialIconInput.vue'
+import MenuScanButton from '../components/MenuScanButton.vue'
 import { useToast } from '../composables/useToast'
 
-const THEME_OPTIONS = THEME_LIST.map(t => ({ value: t.name, label: t.label }))
-const SWATCH_OPTIONS = SWATCH_LIST.map(s => ({ value: s.name, label: s.label, hint: s.group }))
-const VARIANT_OPTIONS = [
-  { value: 'essentials', label: 'Essentials', hint: '6–8 photos' },
-  { value: 'portfolio', label: 'Portfolio', hint: '12–16 photos' },
-  { value: 'extended', label: 'Extended', hint: '20–28 photos' },
-]
-
 interface PhotoSlot { src: string; alt?: string; caption?: string }
-interface MenuItem { name: string; description?: string; price: string; tags?: string[] }
-interface MenuCategory { name: string; description?: string; items: MenuItem[] }
+interface MenuItem { name: string; description?: string; price: string; tags?: string[]; image?: string }
+interface MenuCategory { name: string; description?: string; items: MenuItem[]; image?: string }
 interface HourRow { day: string; open: string }
-interface SocialLink { label: string; href: string }
+interface SocialLink { label: string; href: string; icon?: string }
 interface FactRow { label: string; value: string }
 interface Testimonial { quote: string; author: string; source?: string }
 // Archetype-specific item types — these MIRROR the shapes the deployed
@@ -406,16 +396,41 @@ function addParagraph()               { c.story.paragraphs.push('') }
 function removeParagraph(i: number)   { c.story.paragraphs.splice(i, 1) }
 function addFact()                    { c.story.facts = c.story.facts ?? []; c.story.facts.push({ label: '', value: '' }) }
 function removeFact(i: number)        { c.story.facts!.splice(i, 1) }
-function addTestimonial()             { c.testimonials.push({ quote: '', author: '', source: '' }) }
-function removeTestimonial(i: number) { c.testimonials.splice(i, 1) }
-function addSocial()                  { c.social.push({ label: '', href: '' }) }
+function addSocial()                  { c.social.push({ label: '', href: '', icon: '' }) }
 function removeSocial(i: number)      { c.social.splice(i, 1) }
 function addGallerySlot()             { c.photos.gallery.push({ src: '', alt: '' }) }
 function removeGallerySlot(i: number) { c.photos.gallery.splice(i, 1) }
-function addCategory()                { c.menu.categories.push({ name: '', description: '', items: [] }) }
+function addCategory()                { c.menu.categories.push({ name: '', description: '', items: [], image: '' }) }
 function removeCategory(i: number)    { c.menu.categories.splice(i, 1) }
-function addMenuItem(cat: MenuCategory)              { cat.items.push({ name: '', description: '', price: '', tags: [] }) }
+function addMenuItem(cat: MenuCategory)              { cat.items.push({ name: '', description: '', price: '', tags: [], image: '' }) }
 function removeMenuItem(cat: MenuCategory, i: number){ cat.items.splice(i, 1) }
+
+/** Merge AI-scanned menu categories into the editor. Existing categories are
+    kept; scanned categories with a matching name absorb the new items, and
+    brand-new categories are appended. Images/tags are left for the owner to
+    add — the scan only pulls text. */
+interface ScannedMenu { categories: Array<{ name: string; description?: string; items: Array<{ name: string; description?: string; price?: string }> }> }
+function applyScannedMenu(scanned: ScannedMenu) {
+  let added = 0
+  for (const sc of scanned.categories ?? []) {
+    const name = (sc.name || '').trim()
+    if (!name) continue
+    let cat = c.menu.categories.find(x => x.name.trim().toLowerCase() === name.toLowerCase())
+    if (!cat) {
+      cat = { name, description: sc.description?.trim() || '', items: [], image: '' }
+      c.menu.categories.push(cat)
+    } else if (!cat.description && sc.description) {
+      cat.description = sc.description.trim()
+    }
+    for (const it of sc.items ?? []) {
+      const itemName = (it.name || '').trim()
+      if (!itemName) continue
+      cat.items.push({ name: itemName, description: it.description?.trim() || '', price: (it.price || '').trim(), tags: [], image: '' })
+      added++
+    }
+  }
+  toast.success(added ? `Added ${added} item${added === 1 ? '' : 's'} from your menu photo` : 'No menu items found in that image')
+}
 
 // Archetype-specific helpers
 function addRoom()    { c.rooms.push({ name: '', blurb: '', rateFrom: '', image: '', features: [] }) }
@@ -583,18 +598,13 @@ watch(siteId, loadDraft)
           <div class="favicon-row">
             <img v-if="c.favicon" :src="c.favicon" class="favicon-thumb" alt="Current favicon" />
             <div v-else class="favicon-thumb favicon-thumb--empty" aria-hidden="true">ico</div>
-            <label class="file-btn">{{ uploading['favicon'] ? 'Uploading…' : (c.favicon ? 'Replace' : 'Upload') }}
+            <label class="file-btn file-btn--upload">{{ uploading['favicon'] ? 'Uploading…' : (c.favicon ? 'Replace' : 'Upload') }}
               <input type="file" accept="image/png,image/x-icon,image/svg+xml,image/vnd.microsoft.icon" :disabled="!!uploading['favicon']" @change="onFaviconFile" />
             </label>
-            <input v-model="c.favicon" placeholder="or paste URL (.ico / .png / .svg)" class="flex-1" />
+            <span class="favicon-hint">PNG, SVG or ICO · square works best</span>
             <button v-if="c.favicon" type="button" class="btn-remove btn-remove--icon" :title="'Clear favicon'" @click="c.favicon = ''">×</button>
           </div>
         </label>
-        <div class="row-3">
-          <SelectInput v-model="c.theme" label="Theme" :options="THEME_OPTIONS" />
-          <SelectInput v-model="c.swatch" label="Swatch" :options="SWATCH_OPTIONS" />
-          <SelectInput v-model="c.variant" label="Variant" :options="VARIANT_OPTIONS" />
-        </div>
       </fieldset>
 
       <!-- ── Contact ── -->
@@ -686,42 +696,57 @@ watch(siteId, loadDraft)
       <!-- ── Menu (mesa) ── -->
       <fieldset v-if="activeTab === 'menu'">
         <legend>Menu</legend>
-        <div class="row-2">
-          <label>Menu intro line<input v-model="c.menu.intro" placeholder="Updated weekly with…" /></label>
-          <label>Full menu PDF
-            <div class="pdf-upload">
-              <input
-                type="file"
-                accept="application/pdf"
-                :disabled="uploading['menuPdf']"
-                @change="onMenuPdfFile"
-              />
-              <a v-if="c.menu.fullMenuUrl" :href="c.menu.fullMenuUrl" target="_blank" rel="noopener" class="pdf-upload__link">View current PDF</a>
-              <button
-                v-if="c.menu.fullMenuUrl"
-                type="button"
-                class="pdf-upload__clear"
-                @click="c.menu.fullMenuUrl = ''"
-              >Remove</button>
-              <span v-if="uploading['menuPdf']" class="meta">Uploading…</span>
+        <label>Menu intro line<input v-model="c.menu.intro" placeholder="Updated weekly with…" /></label>
+
+        <div class="menu-uploads">
+          <div class="menu-upload">
+            <span class="menu-upload__title">Full menu PDF</span>
+            <div class="file-actions">
+              <label class="file-btn file-btn--upload">
+                {{ uploading['menuPdf'] ? 'Uploading…' : (c.menu.fullMenuUrl ? 'Replace PDF' : 'Choose PDF') }}
+                <input type="file" accept="application/pdf" :disabled="uploading['menuPdf']" @change="onMenuPdfFile" />
+              </label>
+              <a v-if="c.menu.fullMenuUrl" :href="c.menu.fullMenuUrl" target="_blank" rel="noopener" class="pdf-upload__link">View current</a>
+              <button v-if="c.menu.fullMenuUrl" type="button" class="pdf-upload__clear" @click="c.menu.fullMenuUrl = ''">Remove</button>
             </div>
-          </label>
+          </div>
+
+          <div class="menu-upload menu-upload--scan">
+            <span class="menu-upload__title">Scan a menu photo</span>
+            <MenuScanButton v-if="siteId" :site-id="siteId" @scanned="applyScannedMenu" />
+            <span class="menu-upload__hint">Snap or upload a photo of your printed menu — we read the text and fill in the items below for you.</span>
+          </div>
         </div>
 
         <div v-for="(cat, ci) in c.menu.categories" :key="ci" class="menu-cat">
-          <div class="menu-cat__header">
-            <input v-model="cat.name" placeholder="Category (e.g. Small)" class="flex-2" />
-            <input v-model="cat.description" placeholder="Short description (optional)" class="flex-3" />
-            <button type="button" class="btn-remove" @click="removeCategory(ci)">Remove category</button>
-          </div>
-          <div v-for="(item, ii) in cat.items" :key="ii" class="menu-item">
-            <input v-model="item.name" placeholder="Dish name" class="flex-2" />
-            <input v-model="item.description" placeholder="Description" class="flex-3" />
-            <input v-model="item.price" placeholder="$0" style="max-width:80px" />
-            <div style="min-width: 150px">
-              <ChipsInput :model-value="item.tags ?? []" placeholder="V, GF…" @update:model-value="(v: string[]) => item.tags = v" />
+          <div class="menu-cat__top">
+            <div class="menu-cat__img">
+              <ImageInput :model-value="cat.image ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => cat.image = v" />
             </div>
-            <button type="button" class="btn-remove btn-remove--icon" @click="removeMenuItem(cat, ii)">×</button>
+            <div class="menu-cat__fields">
+              <div class="menu-cat__row">
+                <input v-model="cat.name" placeholder="Category (e.g. Small plates)" class="flex-1" />
+                <button type="button" class="btn-remove" @click="removeCategory(ci)">Remove category</button>
+              </div>
+              <input v-model="cat.description" placeholder="Short description (optional)" />
+            </div>
+          </div>
+
+          <div v-for="(item, ii) in cat.items" :key="ii" class="menu-item">
+            <div class="menu-item__img">
+              <ImageInput :model-value="item.image ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => item.image = v" />
+            </div>
+            <div class="menu-item__body">
+              <div class="menu-item__row">
+                <input v-model="item.name" placeholder="Dish name" class="menu-item__name" />
+                <input v-model="item.price" placeholder="$0" class="menu-item__price" />
+                <div class="menu-item__tags">
+                  <ChipsInput :model-value="item.tags ?? []" placeholder="V, GF…" @update:model-value="(v: string[]) => item.tags = v" />
+                </div>
+                <button type="button" class="btn-remove btn-remove--icon" @click="removeMenuItem(cat, ii)">×</button>
+              </div>
+              <TextAreaField v-model="item.description" :rows="2" :maxlength="160" placeholder="Description…" />
+            </div>
           </div>
           <button type="button" class="btn-add btn-add--indent" @click="addMenuItem(cat)">+ Add item</button>
         </div>
@@ -818,11 +843,18 @@ watch(siteId, loadDraft)
         <button type="button" class="btn-add" @click="addProduct">+ Add product</button>
 
         <p class="section-sub">Shop categories</p>
-        <div v-for="(cat, i) in c.categories" :key="i" class="list-row">
-          <input v-model="cat.name" placeholder="Category name (e.g. Apparel)" />
-          <input v-model="cat.count" placeholder="Item count" style="max-width:110px" />
-          <input v-model="cat.image" placeholder="Image URL" class="flex-1" />
-          <button type="button" class="btn-remove" @click="removeShopCategory(i)">✕</button>
+        <div v-for="(cat, i) in c.categories" :key="i" class="testimonial-row">
+          <div class="row-2">
+            <input v-model="cat.name" placeholder="Category name (e.g. Apparel)" />
+            <input v-model="cat.count" placeholder="Item count (e.g. 24 items)" />
+          </div>
+          <ImageInput
+            :model-value="cat.image ?? ''"
+            :site-id="siteId"
+            aspect="1 / 1"
+            @update:model-value="(v: string) => cat.image = v"
+          />
+          <button type="button" class="btn-remove" @click="removeShopCategory(i)">Remove category</button>
         </div>
         <button type="button" class="btn-add" @click="addShopCategory">+ Add category</button>
       </fieldset>
@@ -875,35 +907,13 @@ watch(siteId, loadDraft)
         <button type="button" class="btn-add" @click="addPillar">+ Add pillar</button>
       </fieldset>
 
-      <!-- ── Testimonials ── -->
-      <fieldset v-if="activeTab === 'testimonials'">
-        <legend>Testimonials</legend>
-        <div class="reviews-source">
-          <SegmentedInput
-            v-model="c.reviewsSource"
-            label="Show on the public site"
-            :options="[
-              { value: 'manual', label: 'Hand-written testimonials' },
-              { value: 'google', label: 'Live Google reviews' },
-            ]"
-            hint="Live reviews pull from the business connected on the Google Reviews page. If none are available, the public site falls back to the hand-written list below."
-          />
-        </div>
-        <div v-for="(t, i) in c.testimonials" :key="i" class="testimonial-row">
-          <TextAreaField v-model="t.quote" :rows="2" :maxlength="400" placeholder="Quote…" />
-          <div class="row-2">
-            <input v-model="t.author" placeholder="Author name" />
-            <input v-model="t.source" placeholder="Source (Google, Yelp…)" />
-          </div>
-          <button type="button" class="btn-remove" @click="removeTestimonial(i)">Remove</button>
-        </div>
-        <button type="button" class="btn-add" @click="addTestimonial">+ Add testimonial</button>
-      </fieldset>
-
       <!-- ── Social ── -->
       <fieldset v-if="activeTab === 'social'">
         <legend>Social links</legend>
-        <div v-for="(s, i) in c.social" :key="i" class="list-row">
+        <div v-for="(s, i) in c.social" :key="i" class="social-row">
+          <div class="social-row__icon">
+            <SocialIconInput :model-value="s.icon ?? ''" @update:model-value="(v: string) => s.icon = v" />
+          </div>
           <input v-model="s.label" placeholder="Label (Instagram, Facebook…)" class="flex-1" />
           <input v-model="s.href"  placeholder="https://…" class="flex-3" />
           <button type="button" class="btn-remove btn-remove--icon" @click="removeSocial(i)">×</button>
@@ -929,6 +939,8 @@ watch(siteId, loadDraft)
 .cv-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
 .cv-header h1 { margin: 0; font-family: var(--adm-font-serif); font-weight: 500; }
 .cv-header__right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+/* Save draft / Publish are pill-shaped (matching the save-bar pill). */
+.cv-header__right > button { border-radius: 999px; padding-inline: 1.25rem; }
 
 /* Version chip is a button that opens the history dropdown. */
 .history-wrap { position: relative; display: inline-block; }
@@ -1104,6 +1116,15 @@ textarea { resize: vertical; }
 .flex-2 { flex: 2; }
 .flex-3 { flex: 3; }
 
+/* Social link row — icon chooser + label + URL, all on one baseline. */
+.social-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+.social-row__icon { flex: 0 0 auto; width: 150px; }
+.social-row input { margin-top: 0; min-height: 2.5rem; }
+@media (max-width: 640px) {
+  .social-row { flex-wrap: wrap; }
+  .social-row__icon { width: 100%; }
+}
+
 /* Buttons */
 button {
   padding: 0.45rem 0.95rem;
@@ -1162,18 +1183,27 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 .field-with-ai { display: flex; align-items: flex-start; gap: 0.5rem; }
 .field-with-ai > .ta-field { flex: 1; min-width: 0; }
 
-/* Favicon picker row. */
-.favicon-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem; }
+/* Favicon picker row. Thumb + upload button share the input's outer height
+   so the control lines up with the text fields above it. */
+.favicon-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.3rem; }
 .favicon-thumb {
-  width: 2.4rem;
-  height: 2.4rem;
-  border-radius: 6px;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: var(--adm-radius-sm);
   background: var(--adm-surface-2);
   border: 1px solid var(--adm-border);
   object-fit: contain;
-  padding: 2px;
+  padding: 3px;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
+.favicon-row .file-btn--upload {
+  height: 2.6rem;
+  display: inline-flex; align-items: center;
+  padding-inline: 1.1rem;
+  flex-shrink: 0;
+}
+.favicon-hint { font-size: 0.78rem; color: var(--adm-text-subtle); font-weight: 400; letter-spacing: normal; text-transform: none; }
 .favicon-thumb--empty {
   display: inline-flex;
   align-items: center;
@@ -1231,30 +1261,63 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 .file-btn:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
 .file-btn input[type="file"] { display: none; }
 
-/* Menu */
-.pdf-upload {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
-  margin-top: 0.3rem;
+/* Menu — uploads row (PDF + AI photo scan) */
+.menu-uploads {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem; margin: 0.25rem 0 0.5rem;
 }
-.pdf-upload input[type="file"] { width: auto; margin: 0; }
-.pdf-upload__link {
-  font-size: 0.8rem; color: var(--adm-accent); text-decoration: underline;
+.menu-upload {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: var(--adm-surface-3);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-radius-lg);
 }
+.menu-upload--scan { border-style: dashed; }
+.menu-upload__title {
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--adm-text-muted);
+}
+.menu-upload__hint { font-size: 0.78rem; color: var(--adm-text-subtle); font-weight: 400; letter-spacing: normal; text-transform: none; line-height: 1.4; }
+.file-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.pdf-upload__link { font-size: 0.8rem; color: var(--adm-accent); text-decoration: underline; }
 .pdf-upload__clear {
   background: transparent; border: 1px solid var(--adm-border);
-  color: var(--adm-text-muted); font-size: 0.75rem; padding: 0.2rem 0.55rem;
+  color: var(--adm-text-muted); font-size: 0.75rem; padding: 0.25rem 0.6rem;
   border-radius: 999px; cursor: pointer;
 }
 .pdf-upload__clear:hover { border-color: var(--adm-danger); color: var(--adm-danger); }
+
+/* Menu categories + items — image on the left, aligned field rows on the right */
 .menu-cat {
   background: var(--adm-surface-3);
   border: 1px solid var(--adm-border-soft);
-  border-radius: var(--adm-radius, 10px);
-  padding: 0.85rem; margin-bottom: 0.85rem;
+  border-radius: var(--adm-radius-lg);
+  padding: 1rem; margin-bottom: 0.85rem;
 }
-.menu-cat__header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
-.menu-item { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
-.menu-item input { margin-top: 0; }
+.menu-cat__top { display: grid; grid-template-columns: 88px 1fr; gap: 0.75rem; margin-bottom: 0.85rem; }
+.menu-cat__img { width: 88px; }
+.menu-cat__fields { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.menu-cat__row { display: flex; align-items: center; gap: 0.5rem; }
+.menu-cat__fields input { margin-top: 0; }
+
+.menu-item {
+  display: grid; grid-template-columns: 72px 1fr; gap: 0.6rem;
+  padding: 0.7rem; margin-bottom: 0.5rem;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-border-soft);
+  border-radius: var(--adm-radius);
+}
+.menu-item__img { width: 72px; }
+.menu-item__body { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+/* Every control on this row shares the same height + centered baseline so the
+   fields line up instead of drifting off the row. */
+.menu-item__row { display: flex; align-items: center; gap: 0.5rem; }
+.menu-item__row input { margin-top: 0; min-height: 2.5rem; }
+.menu-item__name { flex: 1 1 auto; min-width: 0; }
+.menu-item__price { flex: 0 0 5rem; width: 5rem; text-align: center; }
+.menu-item__tags { flex: 1 1 40%; min-width: 130px; }
+.menu-item__tags :deep(.ai-control) { margin-top: 0; }
 
 /* Testimonials */
 .reviews-source {
