@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
  * Bespoke image input — drag-and-drop or click to upload (via the site's
- * media endpoint), live preview, replace/remove chips, paste-URL fallback.
- * v-model holds the image URL string.
+ * media endpoint), live preview, replace/remove chips.
+ * v-model holds the image URL string. (Paste-URL entry was removed so every
+ * image goes through a real upload — no stray external hotlinks.)
  */
 import { ref } from 'vue'
-import { ImagePlus, Link2 } from 'lucide-vue-next'
+import { ImagePlus } from 'lucide-vue-next'
 import { contentClient } from '../../../platform/contentClient'
 
 const props = withDefaults(defineProps<{
@@ -25,7 +26,6 @@ const uploading = ref(false)
 const error = ref<string | null>(null)
 const dragging = ref(false)
 const fileEl = ref<HTMLInputElement | null>(null)
-const showUrl = ref(false)
 
 function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -80,7 +80,6 @@ function onDrop(evt: DragEvent) {
         </div>
         <div class="ai-img__actions" @click.stop>
           <button type="button" class="ai-img__chip" @click="fileEl?.click()"><ImagePlus :size="12" /> Replace</button>
-          <button type="button" class="ai-img__chip" @click="showUrl = !showUrl"><Link2 :size="12" /> URL</button>
           <button v-if="clearable" type="button" class="ai-img__chip" @click="model = ''">✕ Remove</button>
         </div>
       </template>
@@ -90,10 +89,6 @@ function onDrop(evt: DragEvent) {
       </div>
       <div v-if="uploading" class="ai-img__busy">Uploading…</div>
     </div>
-    <span v-if="model && showUrl" class="ai-control">
-      <span class="ai-affix"><Link2 :size="13" /></span>
-      <input v-model="model" placeholder="https://…" />
-    </span>
     <input ref="fileEl" type="file" accept="image/*" hidden @change="onPick" />
     <span v-if="error" class="ai-hint" style="color: var(--adm-danger)">{{ error }}</span>
     <span v-else-if="hint" class="ai-hint">{{ hint }}</span>
