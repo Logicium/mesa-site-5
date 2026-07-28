@@ -236,6 +236,8 @@ function next() { idx.value = (idx.value + 1) % total.value }
 .ap-testimonials--vibrant,
 .ap-testimonials--ironwood { display: none; }
 [data-theme='studio']   .ap-testimonials--studio   { display: block; }
+/* Atlas shares the studio numbered-ledger layout; its own type takes over. */
+[data-theme='atlas']    .ap-testimonials--studio   { display: block; }
 [data-theme='heritage'] .ap-testimonials--heritage { display: block; }
 [data-theme='vibrant']  .ap-testimonials--vibrant  { display: block; }
 [data-theme='ironwood'] .ap-testimonials--ironwood { display: block; }

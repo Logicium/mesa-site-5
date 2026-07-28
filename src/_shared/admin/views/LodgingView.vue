@@ -158,7 +158,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
+      <p v-if="loading" class="adm-muted">Loading…</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -216,7 +216,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
+          {{ saving ? 'Saving…' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -230,12 +230,12 @@ watch(siteId, load)
           </thead>
           <tbody>
             <tr v-for="r in reservations" :key="r.id">
-              <td>{{ r.checkIn }} â†’ {{ r.checkOut }} <small class="adm-muted">({{ r.nights }}n)</small></td>
-              <td>{{ r.roomLabel }} <small class="adm-muted">Â· {{ r.partySize }} guest{{ r.partySize === 1 ? '' : 's' }}</small></td>
+              <td>{{ r.checkIn }} → {{ r.checkOut }} <small class="adm-muted">({{ r.nights }}n)</small></td>
+              <td>{{ r.roomLabel }} <small class="adm-muted">· {{ r.partySize }} guest{{ r.partySize === 1 ? '' : 's' }}</small></td>
               <td>{{ r.name }}</td>
               <td>
                 <a :href="`mailto:${r.email}`">{{ r.email }}</a>
-                <template v-if="r.phone"> Â· {{ r.phone }}</template>
+                <template v-if="r.phone"> · {{ r.phone }}</template>
               </td>
               <td>{{ money(r.totalCents, r.currency) }}</td>
               <td>

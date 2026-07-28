@@ -224,7 +224,7 @@ watch(siteId, load)
       <div>
         <span class="adm-eyebrow adm-eyebrow--premium">★ Premium add-on</span>
         <h1 class="adm-title">Ticketing</h1>
-        <p class="adm-subtitle">Sell event tickets â€” set tiers, track capacity, and check guests in at the door.</p>
+        <p class="adm-subtitle">Sell event tickets — set tiers, track capacity, and check guests in at the door.</p>
       </div>
       <div class="head-actions">
         <button
@@ -242,7 +242,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
+      <p v-if="loading" class="adm-muted">Loading…</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>The Ticketing add-on is currently <strong>off</strong>. Enable it above to start selling.</p>

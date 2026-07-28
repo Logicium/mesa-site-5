@@ -177,7 +177,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
+      <p v-if="loading" class="adm-muted">Loading…</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -200,7 +200,7 @@ watch(siteId, load)
               <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeService(i)">Remove</button>
             </li>
           </ul>
-          <p v-else class="adm-muted adm-mb">No services yet â€” add one to get started.</p>
+          <p v-else class="adm-muted adm-mb">No services yet — add one to get started.</p>
 
           <div class="svc-row svc-row--new">
             <input class="adm-input svc-row__label" v-model="newService.label" placeholder="Label (e.g. Haircut)" @change="newService.id = slugify(newService.label)" />
@@ -234,7 +234,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
+          {{ saving ? 'Saving…' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -254,7 +254,7 @@ watch(siteId, load)
               <td>{{ b.name }}</td>
               <td>
                 <a :href="`mailto:${b.email}`">{{ b.email }}</a>
-                <template v-if="b.phone"> Â· {{ b.phone }}</template>
+                <template v-if="b.phone"> · {{ b.phone }}</template>
               </td>
               <td>
                 <span class="adm-badge" :class="b.status === 'cancelled' ? 'adm-badge--warn' : 'adm-badge--info'">{{ b.status }}</span>

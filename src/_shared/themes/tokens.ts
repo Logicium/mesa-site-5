@@ -4,7 +4,7 @@
  * A "swatch" defines color. They are composed at runtime.
  */
 
-export type ThemeName = 'studio' | 'heritage' | 'vibrant' | 'ironwood'
+export type ThemeName = 'atlas' | 'studio' | 'heritage' | 'vibrant' | 'ironwood'
 export type HeroStyle = '1' | '2' | '3' | '4' | '5' | '6'
 export type FooterStyle = '1' | '2' | '3' | '4' | '5'
 export type ContactStyle = '1' | '2' | '3' | '4' | '5'
@@ -12,111 +12,112 @@ export type HoursStyle = '1' | '2' | '3' | '4' | '5'
 export type GalleryStyle = '1' | '2' | '3' | '4' | '5'
 export type ReviewsStyle = '1' | '2' | '3' | '4' | '5'
 export type SubheroStyle = '1' | '2' | '3' | '4' | '5'
-export type SiteStyle = '1' | '2' | '3' | '4' | '5'
+export type SiteStyle = '1' | '2' | '3'
+export type AboutStyle = '1' | '2' | '3' | '4'
+export type NavStyle = '1' | '2' | '3' | '4'
 export type Alignment = 'left' | 'center'
 
 /**
- * Swatch groups are color *theories* — each one is a researched harmony
- * model with a distinct psychological register. Swatches inside a group
- * share the same harmony logic so they feel like siblings, not clones.
+ * Swatch categories. Each category is a hue territory with a clear
+ * personality; the swatch families inside it are tuned to feel like
+ * siblings while staking out unmistakably different palettes.
+ * Every family ships a light and a dark version.
  */
-export type SwatchGroup = 'earthen' | 'serene' | 'warm' | 'bold' | 'dark' | 'neon'
+export type SwatchGroup = 'terra' | 'coast' | 'solar' | 'bold' | 'noir' | 'neon'
 export const SWATCH_GROUP_LABELS: Record<SwatchGroup, string> = {
-  earthen: 'Earthen',
-  serene: 'Serene',
-  warm: 'Warm',
+  terra: 'Terra',
+  coast: 'Coast',
+  solar: 'Solar',
   bold: 'Bold',
-  dark: 'Dark',
+  noir: 'Noir',
   neon: 'Neon',
 }
 
-/** A color theory: the harmony model + the psychology behind a swatch group. */
+/** A swatch category: one line of meaning, no lecture. */
 export interface SwatchTheory {
   id: SwatchGroup
   label: string
-  /** The harmony model the group is built on (color-wheel relationship). */
-  harmony: string
-  /** The documented psychological register the palette plays in. */
-  psychology: string
-  /** Who it tends to suit. */
-  suits: string
+  /** The single line of context shown in pickers. */
+  subtext: string
 }
 
 export const SWATCH_THEORIES: SwatchTheory[] = [
   {
-    id: 'earthen',
-    label: 'Earthen',
-    harmony: 'Analogous greens & ochres',
-    psychology: 'Biophilic palettes lower stress and read as honest and grounded — nature hues signal restoration and trust.',
-    suits: 'Farm-to-table dining, stays, wellness, craft trades',
+    id: 'terra',
+    label: 'Terra',
+    subtext: 'Clay, pine, and olive. Grounded color for kitchens, stays, and craft.',
   },
   {
-    id: 'serene',
-    label: 'Serene',
-    harmony: 'Cool analogous blues, softened with warm accents',
-    psychology: 'Blue is the most universally preferred hue; cool palettes signal competence, calm, and dependability.',
-    suits: 'Professional services, lodging, galleries, healthcare-adjacent',
+    id: 'coast',
+    label: 'Coast',
+    subtext: 'Deep blues, teal, and violet. Calm, capable, quietly modern.',
   },
   {
-    id: 'warm',
-    label: 'Warm',
-    harmony: 'Adjacent reds, oranges & pinks',
-    psychology: 'Warm hues raise energy and appetite — red-orange is the classic stimulant register for food and hospitality.',
-    suits: 'Restaurants, cafés, bakeries, festive retail',
+    id: 'solar',
+    label: 'Solar',
+    subtext: 'Vermilion, wine, and saffron. Heat and appetite for food and festivity.',
   },
   {
     id: 'bold',
     label: 'Bold',
-    harmony: 'Complementary pairs at full chroma',
-    psychology: 'Opposing hues create maximum simultaneous contrast — youthful, confident, impossible to ignore.',
-    suits: 'Boutiques, makers, events, youth-facing brands',
+    subtext: 'Color takes over the page. Loud, confident, impossible to miss.',
   },
   {
-    id: 'dark',
-    label: 'Dark',
-    harmony: 'Low-key monochrome with a metallic or jewel accent',
-    psychology: 'Dark grounds read as premium and intimate — low-key lighting is the visual language of luxury.',
-    suits: 'Fine dining, cocktail bars, high-end retail, venues',
+    id: 'noir',
+    label: 'Noir',
+    subtext: 'Near-black rooms with one jewel accent. The look of luxury after dark.',
   },
   {
     id: 'neon',
     label: 'Neon',
-    harmony: 'Split-complementary brights on near-black',
-    psychology: 'Maximum arousal palette — glowing chroma on darkness signals nightlife, music, and subculture energy.',
-    suits: 'Nightlife, music venues, streetwear, gaming',
+    subtext: 'Signal hues that glow. Built for nightlife, music, and late hours.',
   },
 ]
 
-export type SwatchName =
-  // Earthen
-  | 'sand'
-  | 'sage'
-  | 'forest'
-  | 'citrus'
-  // Serene
-  | 'stone'
-  | 'glacier'
-  | 'tide'
-  | 'lilac'
-  // Warm
-  | 'sunset'
-  | 'rose'
-  | 'fiesta'
-  | 'mango'
+/**
+ * A swatch family: one named palette idea that exists in a light and a
+ * dark version ("<family>-light" / "<family>-dark").
+ */
+export type SwatchFamily =
+  // Terra
+  | 'adobe'
+  | 'pine'
+  | 'matcha'
+  // Coast
+  | 'ultramarine'
+  | 'lagoon'
+  | 'iris'
+  // Solar
+  | 'vermilion'
+  | 'rosewood'
+  | 'saffron'
   // Bold
-  | 'electric'
-  | 'punch'
-  | 'carnival'
-  // Dark
+  | 'klein'
+  | 'riot'
+  | 'signal'
+  // Noir
+  | 'onyx'
   | 'midnight'
-  | 'obsidian'
-  | 'ember'
-  | 'plum'
+  | 'velvet'
   // Neon
-  | 'neon'
+  | 'volt'
   | 'aurora'
   | 'acid'
-  | 'synthwave'
+
+export type SwatchName = `${SwatchFamily}-light` | `${SwatchFamily}-dark`
+
+/**
+ * Names accepted from older site configs / localStorage. Kept forever so a
+ * site published under the previous color system keeps rendering close to
+ * what its owner picked.
+ */
+export type LegacySwatchName =
+  | 'sand' | 'sage' | 'forest' | 'citrus'
+  | 'stone' | 'glacier' | 'tide' | 'lilac'
+  | 'sunset' | 'rose' | 'fiesta' | 'mango'
+  | 'electric' | 'punch' | 'carnival'
+  | 'midnight' | 'obsidian' | 'ember' | 'plum'
+  | 'neon' | 'aurora' | 'acid' | 'synthwave'
 
 export interface ColorSwatch {
   /** Preset swatches use a SwatchName; user-built palettes use a free id. */
@@ -124,6 +125,8 @@ export interface ColorSwatch {
   label: string
   mode: 'light' | 'dark'
   group: SwatchGroup
+  /** Family id linking this swatch to its light/dark counterpart. */
+  family?: string
   primary: string
   accent: string
   surface: string
@@ -159,29 +162,36 @@ export interface ThemeTokens {
   headingWeight: number
 }
 
-export type SiteVariant = 'essentials' | 'portfolio' | 'extended'
+/**
+ * The two website sizes. ("extended" no longer exists as a tier — any
+ * config still carrying it resolves to portfolio via resolveVariant.)
+ */
+export type SiteVariant = 'essentials' | 'portfolio'
 
 export type Archetype = 'dine' | 'stay' | 'shop' | 'venue' | 'project' | 'utility'
 
 /** How many photos each variant expects in each gallery slot. */
 export const VARIANT_PHOTO_COUNT: Record<SiteVariant, { gallery: number; max: number }> = {
-  essentials: { gallery: 6, max: 8 },
-  portfolio: { gallery: 12, max: 16 },
-  extended: { gallery: 20, max: 28 },
+  essentials: { gallery: 8, max: 8 },
+  portfolio: { gallery: 16, max: 16 },
 }
 
 /**
- * Variants are a tier ladder — each unlocks everything below it plus more.
- * `extended` is a superset of `portfolio` (all its pages/sections + deeper
- * content and the largest galleries). Gate features with `variantAtLeast`
- * rather than `=== 'portfolio'` so `extended` inherits them automatically.
+ * Variants are a tier ladder — portfolio unlocks everything in essentials
+ * plus the photo-forward layouts (hero carousel, larger galleries).
+ * Gate features with `variantAtLeast` rather than equality checks.
  */
 export const VARIANT_RANK: Record<SiteVariant, number> = {
   essentials: 0,
   portfolio: 1,
-  extended: 2,
 }
 
-export function variantAtLeast(variant: SiteVariant, min: SiteVariant): boolean {
-  return VARIANT_RANK[variant] >= VARIANT_RANK[min]
+/** Accepts legacy values ('extended') and anything unknown safely. */
+export function resolveVariant(v: string | undefined | null): SiteVariant {
+  if (v === 'portfolio' || v === 'extended') return 'portfolio'
+  return 'essentials'
+}
+
+export function variantAtLeast(variant: SiteVariant | string, min: SiteVariant): boolean {
+  return VARIANT_RANK[resolveVariant(variant as string)] >= VARIANT_RANK[min]
 }

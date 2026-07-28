@@ -101,7 +101,7 @@ export const contentClient = {
   },
 
   // --- Admin ---
-  listSites: (opts: { includeDeactivated?: boolean } = {}) => request<Array<{ id: string; slug: string; displayName: string | null; archetype: string; status: string; productionUrl?: string; customDomain?: string; deactivatedAt?: string | null; screenshotUrl?: string | null; screenshotCapturedAt?: string | null; addOns?: string[]; templateCommitSha?: string | null; lastDeployedAt?: string | null }>>('GET', `/admin/sites${opts.includeDeactivated ? '?includeDeactivated=1' : ''}`),
+  listSites: (opts: { includeDeactivated?: boolean } = {}) => request<Array<{ id: string; slug: string; displayName: string | null; archetype: string; status: string; productionUrl?: string; customDomain?: string; deactivatedAt?: string | null; screenshotUrl?: string | null; screenshotCapturedAt?: string | null; addOns?: string[]; plan?: string; templateCommitSha?: string | null; lastDeployedAt?: string | null }>>('GET', `/admin/sites${opts.includeDeactivated ? '?includeDeactivated=1' : ''}`),
   renameSite: (siteId: string, displayName: string) => request<{ id: string; displayName: string | null }>('PUT', `/admin/sites/${siteId}`, { displayName }),
   deactivateSite: (siteId: string) => request<{ id: string; deactivatedAt: string }>('POST', `/admin/sites/${siteId}/deactivate`),
   activateSite: (siteId: string) => request<{ id: string; deactivatedAt: string | null }>('POST', `/admin/sites/${siteId}/activate`),
@@ -115,6 +115,18 @@ export const contentClient = {
   listSubmissions: (siteId: string) => request<Array<{ id: string; type: string; payload: Record<string, string>; readAt?: string; createdAt: string }>>('GET', `/admin/sites/${siteId}/submissions`),
   markSubmissionRead: (siteId: string, subId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/submissions/${subId}/read`),
 
+  /** Checkout for upgrades on an EXISTING site (portfolio plan, photo
+      campaigns). Purchases land in the owner's Billing history. */
+  createUpgradeCheckout: (siteId: string, items: string[]) =>
+    request<{ orderId: string; checkoutUrl: string | null; dryRun?: boolean }>(
+      'POST', `/admin/sites/${siteId}/upgrade-checkout`,
+      { items, origin: typeof location !== 'undefined' ? location.origin : undefined },
+    ),
+
+  /** Google Business Profile onboarding: emails the operator with the
+      owner's setup or management request (consent required). */
+  submitGbpRequest: (siteId: string, mode: 'setup' | 'manage', fields: Record<string, string>, consent: boolean) =>
+    request<{ ok: true }>('POST', `/admin/sites/${siteId}/gbp-request`, { mode, fields, consent }),
   setGooglePlace: (siteId: string, placeId: string) => request<{ ok: true; placeId: string; preview: GooglePlacePreview | null }>('POST', `/admin/sites/${siteId}/google-place`, { placeId }),
   getGooglePlace: (siteId: string) => request<{ placeId: string | null; preview: GooglePlacePreview | null }>('GET', `/admin/sites/${siteId}/google-place`),
   disconnectGooglePlace: (siteId: string) => request<{ ok: true }>('POST', `/admin/sites/${siteId}/google-place/disconnect`),

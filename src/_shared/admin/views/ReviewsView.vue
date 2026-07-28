@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { Building2, PenLine, Star } from 'lucide-vue-next'
 import { contentClient, type GooglePlacePreview } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
-import SegmentedInput from '../components/inputs/SegmentedInput.vue'
 import TextAreaField from '../../components/forms/TextAreaField.vue'
 import { useToast } from '../composables/useToast'
 
@@ -10,25 +10,31 @@ const activeSites = useActiveSiteStore()
 const siteId = computed(() => activeSites.activeId)
 const toast = useToast()
 
-// ── Hand-written testimonials + source choice (moved here from the old
-//    Content › Testimonials tab so all review controls live in one place). ──
+// ── "Show on the public site" IS the tab switcher: the active tab is the
+//    source the site renders. Default tab: Google reviews. ──
 interface Testimonial { quote: string; author: string; source?: string }
 // The full content draft is held so we only ever overwrite the two keys we own
 // (reviewsSource + testimonials) and never clobber the rest of the payload.
 const draftPayload = ref<Record<string, unknown> | null>(null)
-const reviewsSource = ref<'manual' | 'google'>('manual')
+const reviewsSource = ref<'manual' | 'google'>('google')
+const savedSource = ref<'manual' | 'google'>('google')
 const testimonials = ref<Testimonial[]>([])
 const contentSaving = ref(false)
+const sourceDirty = computed(() => reviewsSource.value !== savedSource.value)
 
 async function loadContent() {
   draftPayload.value = null
-  reviewsSource.value = 'manual'
+  reviewsSource.value = 'google'
+  savedSource.value = 'google'
   testimonials.value = []
   if (!siteId.value) return
   try {
     const d = await contentClient.getDraft(siteId.value)
     draftPayload.value = d.payload
-    reviewsSource.value = d.payload.reviewsSource === 'google' ? 'google' : 'manual'
+    // Saved choice wins; a site that never chose defaults to Google.
+    const src = d.payload.reviewsSource === 'manual' ? 'manual' : 'google'
+    reviewsSource.value = src
+    savedSource.value = src
     testimonials.value = Array.isArray(d.payload.testimonials) ? (d.payload.testimonials as Testimonial[]) : []
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -51,10 +57,42 @@ async function saveContent(publish: boolean) {
       toast.success(`Draft saved · v${r.version}`)
     }
     draftPayload.value = payload
+    savedSource.value = reviewsSource.value
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e))
   } finally {
     contentSaving.value = false
+  }
+}
+
+/* ── Google Business Profile onboarding ──
+   Only shown while no listing is connected. Two paths, both requiring
+   explicit consent; each emails the operator with the details. */
+const gbpChoice = ref<'setup' | 'manage' | null>(null)
+const gbpConsent = ref(false)
+const gbpBusy = ref(false)
+const gbpSent = ref(false)
+const gbpFields = ref<Record<string, string>>({
+  businessName: '', address: '', phone: '', category: '', hoursNotes: '', notes: '',
+})
+
+function pickGbp(choice: 'setup' | 'manage') {
+  gbpChoice.value = gbpChoice.value === choice ? null : choice
+  gbpConsent.value = false
+  gbpSent.value = false
+}
+
+async function submitGbp() {
+  if (!siteId.value || !gbpChoice.value || !gbpConsent.value) return
+  gbpBusy.value = true
+  try {
+    await contentClient.submitGbpRequest(siteId.value, gbpChoice.value, gbpFields.value, true)
+    gbpSent.value = true
+    toast.success('Request sent. We will follow up by email.')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    gbpBusy.value = false
   }
 }
 
@@ -154,9 +192,15 @@ async function disconnect() {
   }
 }
 
+/* The keyless embed cannot resolve `q=place_id:…` — it silently falls back to
+   a zoomed-out world map. Query the listing's name + address instead (the
+   same form MapSearchPicker uses) and pin the zoom so it lands on the shop. */
 const mapEmbedUrl = computed(() => {
-  if (!connected.value) return null
-  return `https://www.google.com/maps?q=place_id:${encodeURIComponent(connected.value.placeId)}&output=embed`
+  const c = connected.value
+  if (!c) return null
+  const place = [c.preview?.name, c.preview?.address].filter(Boolean).join(', ')
+  if (!place) return null
+  return `https://www.google.com/maps?q=${encodeURIComponent(place)}&z=16&output=embed`
 })
 
 function stars(rating: number) {
@@ -185,21 +229,31 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
     </div>
 
     <template v-else>
-      <!-- ── Source choice + hand-written testimonials ── -->
-      <div class="adm-card rv-testimonials">
-        <SegmentedInput
-          v-model="reviewsSource"
-          label="Show on the public site"
-          :options="[
-            { value: 'manual', label: 'Hand-written testimonials' },
-            { value: 'google', label: 'Live Google reviews' },
-          ]"
-          hint="Live reviews pull from the Google business connected below. If none are available, the site falls back to the hand-written list."
-        />
+      <!-- ── "Show on the public site" = the tab switcher ── -->
+      <div class="rv-source">
+        <span class="adm-eyebrow rv-source__label">Show on the public site</span>
+        <div class="adm-tabs" role="tablist">
+          <button type="button" role="tab" class="adm-tab" :class="{ 'is-active': reviewsSource === 'google' }" :aria-selected="reviewsSource === 'google'" @click="reviewsSource = 'google'">
+            <Star :size="14" /> Live Google reviews
+          </button>
+          <button type="button" role="tab" class="adm-tab" :class="{ 'is-active': reviewsSource === 'manual' }" :aria-selected="reviewsSource === 'manual'" @click="reviewsSource = 'manual'">
+            <PenLine :size="14" /> Hand-written testimonials
+          </button>
+        </div>
+        <div class="rv-source__save">
+          <span v-if="sourceDirty" class="rv-source__dirty">Publish to make this the live source.</span>
+          <button type="button" class="adm-btn adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(false)">Save draft</button>
+          <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(true)">Publish</button>
+        </div>
+      </div>
 
+      <!-- ── Tab · Hand-written testimonials ── -->
+      <div v-if="reviewsSource === 'manual'" class="adm-card rv-testimonials">
+        <h3 class="adm-card__title">Hand-written testimonials</h3>
+        <p class="adm-card__sub">Shown on the site while this tab is the live source, and used as the fallback when Google has nothing.</p>
         <div class="rv-tst">
           <div v-for="(t, i) in testimonials" :key="i" class="rv-tst__row">
-            <TextAreaField v-model="t.quote" :rows="2" :maxlength="400" placeholder="Quote…" />
+            <TextAreaField v-model="t.quote" :rows="3" :maxlength="400" placeholder="Quote…" />
             <div class="rv-tst__meta">
               <input class="adm-input" v-model="t.author" placeholder="Author name" />
               <input class="adm-input" v-model="t.source" placeholder="Source (Google, Yelp…)" />
@@ -211,14 +265,10 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
           </p>
           <button type="button" class="adm-btn adm-btn--sm rv-tst__add" @click="addTestimonial">+ Add testimonial</button>
         </div>
-
-        <div class="rv-tst__save">
-          <button type="button" class="adm-btn adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(false)">Save draft</button>
-          <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" :disabled="contentSaving || !draftPayload" @click="saveContent(true)">Publish</button>
-        </div>
       </div>
 
-      <div v-if="connected" class="rv-connected">
+      <!-- ── Tab · Google reviews ── -->
+      <div v-else-if="connected" class="rv-connected">
         <div class="rv-card rv-summary">
           <div class="rv-summary__head">
             <div class="rv-brand">
@@ -259,7 +309,7 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
         <div class="rv-grid">
           <div class="rv-card rv-map" v-if="mapEmbedUrl">
             <iframe
-              :key="connected.placeId"
+              :key="mapEmbedUrl"
               :src="mapEmbedUrl"
               loading="lazy"
               referrerpolicy="no-referrer-when-downgrade"
@@ -286,7 +336,7 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
         </div>
       </div>
 
-      <div v-else class="rv-card rv-picker">
+      <div v-else-if="reviewsSource === 'google'" class="rv-card rv-picker">
         <div class="rv-brand rv-brand--lg">
           <span class="rv-brand__logo" aria-hidden="true">
             <svg viewBox="0 0 48 48" width="34" height="34">
@@ -342,6 +392,78 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
         </p>
       </div>
 
+      <!-- ── Google Business Profile onboarding (google tab, nothing connected) ── -->
+      <div v-if="reviewsSource === 'google' && !connected" class="rv-card rv-gbp">
+        <div class="rv-gbp__head">
+          <span class="rv-gbp__icon"><Building2 :size="18" /></span>
+          <div>
+            <h3 class="rv-gbp__title">No Google Business Profile yet?</h3>
+            <p class="rv-gbp__body">We can set one up for you, or help you manage the one you have. Pick what fits:</p>
+          </div>
+        </div>
+
+        <div class="rv-gbp__choices">
+          <button type="button" class="rv-gbp__choice" :class="{ 'is-active': gbpChoice === 'setup' }" @click="pickGbp('setup')">
+            <strong>Set one up for me</strong>
+            <span>Answer a few questions and we create the profile, transfer ownership to you, and stay on as editors.</span>
+          </button>
+          <button type="button" class="rv-gbp__choice" :class="{ 'is-active': gbpChoice === 'manage' }" @click="pickGbp('manage')">
+            <strong>I have one. Help me manage it</strong>
+            <span>Add us as an editor on your existing profile and we keep hours, photos, and posts fresh.</span>
+          </button>
+        </div>
+
+        <p v-if="gbpSent" class="adm-msg-ok">Request sent. We will reply by email to get things moving.</p>
+
+        <!-- Setup form -->
+        <form v-else-if="gbpChoice === 'setup'" class="rv-gbp__form" @submit.prevent="submitGbp">
+          <div class="rv-gbp__grid">
+            <label class="adm-label">Business name
+              <input class="adm-input" v-model="gbpFields.businessName" required placeholder="e.g. Mesa Trinidad" />
+            </label>
+            <label class="adm-label">Business address
+              <input class="adm-input" v-model="gbpFields.address" required placeholder="Street, city, state, zip" />
+            </label>
+            <label class="adm-label">Public phone
+              <input class="adm-input" v-model="gbpFields.phone" placeholder="(719) 555-0100" />
+            </label>
+            <label class="adm-label">Business category
+              <input class="adm-input" v-model="gbpFields.category" placeholder="e.g. Restaurant, Auto repair shop" />
+            </label>
+          </div>
+          <label class="adm-label">Anything else we should know?
+            <TextAreaField v-model="gbpFields.notes" :rows="3" :maxlength="400" placeholder="Hours quirks, service area, a second location…" />
+          </label>
+          <label class="rv-gbp__consent">
+            <input type="checkbox" v-model="gbpConsent" required />
+            <span>I give Apotome Labs permission to create a Google Business Profile for my business, transfer its ownership to me, and remain an editor so they can help maintain it.</span>
+          </label>
+          <button class="adm-btn adm-btn--primary" type="submit" :disabled="gbpBusy || !gbpConsent">
+            {{ gbpBusy ? 'Sending…' : 'Request profile setup' }}
+          </button>
+        </form>
+
+        <!-- Manage instructions -->
+        <form v-else-if="gbpChoice === 'manage'" class="rv-gbp__form" @submit.prevent="submitGbp">
+          <ol class="rv-gbp__steps">
+            <li>Open <a href="https://business.google.com" target="_blank" rel="noopener">business.google.com</a> and sign in with the account that owns your profile.</li>
+            <li>Choose your business, then open <strong>Business Profile settings → People and access</strong>.</li>
+            <li>Click <strong>Add</strong>, enter <strong>hello@apotomelabs.com</strong>, and give it the <strong>Manager</strong> role.</li>
+            <li>Submit this form so we know to accept and get started.</li>
+          </ol>
+          <label class="adm-label">Anything we should focus on?
+            <TextAreaField v-model="gbpFields.notes" :rows="3" :maxlength="400" placeholder="e.g. our hours are wrong, we need photos updated…" />
+          </label>
+          <label class="rv-gbp__consent">
+            <input type="checkbox" v-model="gbpConsent" required />
+            <span>I consent to Apotome Labs acting as an editor on my Google Business Profile to help manage it on my behalf.</span>
+          </label>
+          <button class="adm-btn adm-btn--primary" type="submit" :disabled="gbpBusy || !gbpConsent">
+            {{ gbpBusy ? 'Sending…' : 'Request management help' }}
+          </button>
+        </form>
+      </div>
+
       <p v-if="status" class="adm-msg-ok">{{ status }}</p>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
     </template>
@@ -356,7 +478,64 @@ watch(siteId, () => { void loadConnection(); void loadContent() })
   padding: 1.5rem;
 }
 
-/* Testimonials + source block (merged in from the old content tab) */
+/* Source tab row: the switcher plus its save controls */
+.rv-source {
+  display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.rv-source__label { flex-basis: 100%; }
+.rv-source .adm-tabs { margin-bottom: 0; }
+.rv-source__save { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap; }
+.rv-source__dirty { color: var(--adm-warn, #f0b56b); font-size: 0.78rem; }
+
+/* GBP onboarding */
+.rv-gbp { margin-top: 1.25rem; display: flex; flex-direction: column; gap: 1.1rem; }
+.rv-gbp__head { display: flex; gap: 0.85rem; align-items: flex-start; }
+.rv-gbp__icon {
+  width: 40px; height: 40px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: var(--adm-radius-sm);
+  background: color-mix(in srgb, var(--adm-accent) 12%, transparent);
+  color: var(--adm-accent);
+}
+.rv-gbp__title { font-family: var(--adm-font-serif); font-weight: 500; font-size: 1.25rem; margin: 0 0 0.25rem; }
+.rv-gbp__body { color: var(--adm-text-muted); margin: 0; }
+.rv-gbp__choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 700px) { .rv-gbp__choices { grid-template-columns: 1fr; } }
+.rv-gbp__choice {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  text-align: left;
+  padding: 0.9rem 1rem;
+  background: var(--adm-surface-2);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius);
+  color: var(--adm-text);
+  font: inherit; cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.rv-gbp__choice span { color: var(--adm-text-muted); font-size: 0.84rem; line-height: 1.45; }
+.rv-gbp__choice:hover { border-color: var(--adm-accent-deep); }
+.rv-gbp__choice.is-active {
+  border-color: var(--adm-accent);
+  background: color-mix(in srgb, var(--adm-accent) 7%, var(--adm-surface-2));
+}
+.rv-gbp__form { display: flex; flex-direction: column; gap: 0.9rem; }
+.rv-gbp__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 700px) { .rv-gbp__grid { grid-template-columns: 1fr; } }
+.rv-gbp__steps { margin: 0; padding-left: 1.2rem; color: var(--adm-text-muted); display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.9rem; }
+.rv-gbp__steps a { color: var(--adm-accent); }
+.rv-gbp__consent {
+  display: flex; gap: 0.6rem; align-items: flex-start;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--adm-border-strong);
+  border-radius: var(--adm-radius);
+  font-size: 0.84rem; line-height: 1.5; color: var(--adm-text-muted);
+  cursor: pointer;
+}
+.rv-gbp__consent input { margin-top: 0.2rem; accent-color: var(--adm-accent); }
+.rv-gbp__form .adm-btn { align-self: flex-start; }
+
+/* Testimonials block */
 .rv-testimonials { display: flex; flex-direction: column; gap: 1.1rem; margin-bottom: 1.25rem; }
 .rv-tst { display: flex; flex-direction: column; gap: 0.85rem; }
 .rv-tst__row {

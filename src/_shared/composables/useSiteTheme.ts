@@ -1,15 +1,24 @@
 import { ref, computed, watchEffect } from 'vue'
-import type { ThemeName, SwatchName, ThemeTokens, ColorSwatch, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, Alignment } from '../themes/tokens'
+import type { ThemeName, SwatchName, ThemeTokens, ColorSwatch, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, AboutStyle, NavStyle, Alignment } from '../themes/tokens'
+import { resolveVariant } from '../themes/tokens'
 import { THEMES } from '../themes'
-import { SWATCHES } from '../themes/swatches'
+import { SWATCHES, resolvePresetSwatch } from '../themes/swatches'
 import { findCustomSwatch, customSwatches } from '../themes/customSwatches'
 import { applyTheme } from '../themes/applyTheme'
 
 const STORAGE_KEY = 'ap-theme-config'
 
-/** Swatch names may be curated presets or user-built `custom-*` palettes. */
+/**
+ * Swatch names may be current presets, legacy preset names from older
+ * published configs, or user-built `custom-*` palettes.
+ */
 function resolveSwatch(name: string): ColorSwatch {
-  return SWATCHES[name as SwatchName] ?? findCustomSwatch(name) ?? SWATCHES.sand
+  return resolvePresetSwatch(name) ?? findCustomSwatch(name) ?? SWATCHES['onyx-light']
+}
+
+/** Theme names from older configs that no longer exist fall back safely. */
+function resolveThemeName(name: string | undefined): ThemeName {
+  return name && name in THEMES ? (name as ThemeName) : 'atlas'
 }
 
 function readStorage(): Partial<{
@@ -19,16 +28,24 @@ function readStorage(): Partial<{
   galleryStyle: GalleryStyle; reviewsStyle: ReviewsStyle;
   subheroStyle: SubheroStyle;
   siteStyle: SiteStyle;
+  aboutStyle: AboutStyle; navStyle: NavStyle;
   alignment: Alignment;
 }> {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') } catch { return {} }
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, unknown>
+    // Drop any non-string values: an older initFromConfig bug could persist
+    // whole content objects into the style fields ("[object Object]" attrs).
+    return Object.fromEntries(
+      Object.entries(raw).filter(([, v]) => typeof v === 'string'),
+    ) as ReturnType<typeof readStorage>
+  } catch { return {} }
 }
 
 const _saved = readStorage()
 
-const themeRef = ref<ThemeName>(_saved.theme ?? 'studio')
-const swatchRef = ref<string>(_saved.swatch ?? 'sand')
-const variantRef = ref<SiteVariant>(_saved.variant ?? 'essentials')
+const themeRef = ref<ThemeName>(resolveThemeName(_saved.theme))
+const swatchRef = ref<string>(_saved.swatch ?? 'onyx-light')
+const variantRef = ref<SiteVariant>(resolveVariant(_saved.variant))
 const archetypeRef = ref<Archetype>('dine')
 const heroStyleRef = ref<HeroStyle>(_saved.heroStyle ?? '1')
 const footerStyleRef = ref<FooterStyle>(_saved.footerStyle ?? '1')
@@ -38,6 +55,8 @@ const galleryStyleRef = ref<GalleryStyle>(_saved.galleryStyle ?? '1')
 const reviewsStyleRef = ref<ReviewsStyle>(_saved.reviewsStyle ?? '1')
 const subheroStyleRef = ref<SubheroStyle>(_saved.subheroStyle ?? '1')
 const siteStyleRef = ref<SiteStyle>(_saved.siteStyle ?? '1')
+const aboutStyleRef = ref<AboutStyle>(_saved.aboutStyle ?? '1')
+const navStyleRef = ref<NavStyle>(_saved.navStyle ?? '1')
 const alignmentRef = ref<Alignment>(_saved.alignment ?? 'left')
 
 // Module-level effect — single instance, persists + syncs CSS vars on every change
@@ -58,6 +77,8 @@ watchEffect(() => {
     subheroStyleRef.value,
     siteStyleRef.value,
     alignmentRef.value,
+    aboutStyleRef.value,
+    navStyleRef.value,
   )
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -72,6 +93,8 @@ watchEffect(() => {
       reviewsStyle: reviewsStyleRef.value,
       subheroStyle: subheroStyleRef.value,
       siteStyle: siteStyleRef.value,
+      aboutStyle: aboutStyleRef.value,
+      navStyle: navStyleRef.value,
       alignment: alignmentRef.value,
     }))
   } catch { /* storage unavailable */ }
@@ -89,7 +112,7 @@ export function useSiteTheme() {
 
   function setTheme(name: ThemeName) { themeRef.value = name }
   function setSwatch(name: string) { swatchRef.value = name }
-  function setVariant(v: SiteVariant) { variantRef.value = v }
+  function setVariant(v: SiteVariant) { variantRef.value = resolveVariant(v) }
   function setArchetype(a: Archetype) { archetypeRef.value = a }
   function setHeroStyle(s: HeroStyle) { heroStyleRef.value = s }
   function setFooterStyle(s: FooterStyle) { footerStyleRef.value = s }
@@ -100,6 +123,8 @@ export function useSiteTheme() {
   function setSubheroStyle(s: SubheroStyle) { subheroStyleRef.value = s }
   function setSiteStyle(s: SiteStyle) { siteStyleRef.value = s }
   function setAlignment(a: Alignment) { alignmentRef.value = a }
+  function setAboutStyle(s2: AboutStyle) { aboutStyleRef.value = s2 }
+  function setNavStyle(s2: NavStyle) { navStyleRef.value = s2 }
   function init(
     name: ThemeName,
     swatchName: SwatchName,
@@ -114,13 +139,15 @@ export function useSiteTheme() {
     subheroStyle: SubheroStyle = '1',
     siteStyle: SiteStyle = '1',
     alignment: Alignment = 'left',
+    aboutStyle: AboutStyle = '1',
+    navStyle: NavStyle = '1',
   ) {
     // Archetype is always from site config, never from user storage
     archetypeRef.value = archetype
     // User-configurable fields: only apply init defaults when nothing is saved
-    if (!_saved.theme) themeRef.value = name
+    if (!_saved.theme) themeRef.value = resolveThemeName(name)
     if (!_saved.swatch) swatchRef.value = swatchName
-    if (!_saved.variant) variantRef.value = variant
+    if (!_saved.variant) variantRef.value = resolveVariant(variant)
     if (!_saved.heroStyle) heroStyleRef.value = heroStyle
     if (!_saved.footerStyle) footerStyleRef.value = footerStyle
     if (!_saved.contactStyle) contactStyleRef.value = contactStyle
@@ -129,6 +156,8 @@ export function useSiteTheme() {
     if (!_saved.reviewsStyle) reviewsStyleRef.value = reviewsStyle
     if (!_saved.subheroStyle) subheroStyleRef.value = subheroStyle
     if (!_saved.siteStyle) siteStyleRef.value = siteStyle
+    if (!_saved.aboutStyle) aboutStyleRef.value = aboutStyle
+    if (!_saved.navStyle) navStyleRef.value = navStyle
     if (!_saved.alignment) alignmentRef.value = alignment
   }
 
@@ -141,21 +170,30 @@ export function useSiteTheme() {
   function initFromConfig(cfg: unknown, archetype: Archetype = 'dine'): void {
     const c = (cfg ?? {}) as Record<string, unknown>
     const style = (c.style ?? {}) as Record<string, unknown>
+    // Style-variant ids are always short strings ('1'..'6'). Site configs
+    // also carry a CONTENT-level `sections` object (eyebrows/titles); only
+    // read a value as a style when it actually is a string, or the section
+    // style attributes end up as "[object Object]" and every layout variant
+    // stays display:none.
     const sections = (style.sections ?? c.sections ?? {}) as Record<string, unknown>
+    const str = <T extends string>(v: unknown): T | undefined =>
+      typeof v === 'string' ? (v as T) : undefined
     init(
-      (c.theme as ThemeName) ?? 'studio',
-      (c.swatch as SwatchName) ?? 'sand',
-      (c.variant as SiteVariant) ?? 'essentials',
+      resolveThemeName(str(c.theme)),
+      str<SwatchName>(c.swatch) ?? 'onyx-light',
+      str<SiteVariant>(c.variant) ?? 'essentials',
       archetype,
-      (style.heroStyle as HeroStyle) ?? (c.heroStyle as HeroStyle) ?? '1',
-      (style.footerStyle as FooterStyle) ?? (c.footerStyle as FooterStyle) ?? '1',
-      (sections.contact as ContactStyle) ?? '1',
-      (sections.hours as HoursStyle) ?? '1',
-      (sections.gallery as GalleryStyle) ?? '1',
-      (sections.reviews as ReviewsStyle) ?? '1',
-      (style.subheroStyle as SubheroStyle) ?? (c.subheroStyle as SubheroStyle) ?? '1',
-      (style.siteStyle as SiteStyle) ?? (c.siteStyle as SiteStyle) ?? '1',
-      (style.alignment as Alignment) ?? (c.alignment as Alignment) ?? 'left',
+      str<HeroStyle>(style.heroStyle) ?? str<HeroStyle>(c.heroStyle) ?? '1',
+      str<FooterStyle>(style.footerStyle) ?? str<FooterStyle>(c.footerStyle) ?? '1',
+      str<ContactStyle>(sections.contact) ?? '1',
+      str<HoursStyle>(sections.hours) ?? '1',
+      str<GalleryStyle>(sections.gallery) ?? '1',
+      str<ReviewsStyle>(sections.reviews) ?? '1',
+      str<SubheroStyle>(style.subheroStyle) ?? str<SubheroStyle>(c.subheroStyle) ?? '1',
+      str<SiteStyle>(style.siteStyle) ?? str<SiteStyle>(c.siteStyle) ?? '1',
+      str<Alignment>(style.alignment) ?? str<Alignment>(c.alignment) ?? 'left',
+      str<AboutStyle>(sections.about) ?? '1',
+      str<NavStyle>(style.navStyle) ?? '1',
     )
   }
 
@@ -168,11 +206,13 @@ export function useSiteTheme() {
     galleryStyle: galleryStyleRef, reviewsStyle: reviewsStyleRef,
     subheroStyle: subheroStyleRef,
     siteStyle: siteStyleRef,
+    aboutStyle: aboutStyleRef, navStyle: navStyleRef,
     alignment: alignmentRef,
     setTheme, setSwatch, setVariant, setArchetype,
     setHeroStyle, setFooterStyle,
     setContactStyle, setHoursStyle, setGalleryStyle, setReviewsStyle, setSubheroStyle,
     setSiteStyle,
+    setAboutStyle, setNavStyle,
     setAlignment,
     init,
     initFromConfig,

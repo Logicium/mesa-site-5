@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { Images, Instagram } from 'lucide-vue-next'
 import { contentClient, type InstagramMediaDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
+import GalleryPanel from '../components/GalleryPanel.vue'
 
 const activeSites = useActiveSiteStore()
 const route = useRoute()
 const router = useRouter()
+
+/* Tabs: your uploaded photo library vs the live Instagram feed. Landing on
+   the page with an OAuth result jumps straight to the Instagram tab. */
+const tab = ref<'gallery' | 'instagram'>('gallery')
 const siteId = computed(() => activeSites.activeId)
 const connectUrl = ref<string | null>(null)
 const connected = ref(false)
@@ -26,6 +32,7 @@ function consumeOAuthQuery() {
   if (r === 'connected' || r === 'error') {
     oauthResult.value = r
     oauthDetail.value = typeof route.query.detail === 'string' ? route.query.detail : ''
+    tab.value = 'instagram'
     const { instagram: _i, detail: _d, ...rest } = route.query
     void router.replace({ query: rest })
   }
@@ -93,20 +100,36 @@ watch(siteId, loadConnect)
   <section class="adm-page">
     <header class="adm-page__head">
       <div class="adm-page__title-block">
-        <span class="adm-eyebrow">Social</span>
-        <h1 class="adm-title">Instagram</h1>
-        <p class="adm-subtitle">Pull your latest posts directly into your gallery — no manual uploads.</p>
+        <span class="adm-eyebrow">Photos</span>
+        <h1 class="adm-title">Photos &amp; Instagram</h1>
+        <p class="adm-subtitle">Your photo library, mapped to the page. Or connect Instagram and let your feed do the work.</p>
       </div>
     </header>
 
     <div v-if="!siteId" class="adm-empty">
       <div class="adm-empty__icon">⌗</div>
       <h2 class="adm-empty__title">No active site</h2>
-      <p class="adm-empty__body">Select a site from the header dropdown to manage its Instagram connection.</p>
+      <p class="adm-empty__body">Select a site from the header dropdown to manage its photos.</p>
     </div>
 
+    <template v-else>
+      <div class="adm-tabs" role="tablist">
+        <button type="button" role="tab" class="adm-tab" :class="{ 'is-active': tab === 'gallery' }" :aria-selected="tab === 'gallery'" @click="tab = 'gallery'">
+          <Images :size="14" /> Gallery
+        </button>
+        <button type="button" role="tab" class="adm-tab" :class="{ 'is-active': tab === 'instagram' }" :aria-selected="tab === 'instagram'" @click="tab = 'instagram'">
+          <Instagram :size="14" /> Instagram feed
+        </button>
+      </div>
+
+      <!-- ── Tab 1 · Gallery (uploaded photo slots) ── -->
+      <GalleryPanel v-if="tab === 'gallery'" />
+
+      <!-- ── Tab 2 · Instagram ── -->
+      <template v-else>
+
     <!-- Coming soon (no FB app credentials) -->
-    <div v-else-if="notConfigured" class="ig-soon">
+    <div v-if="notConfigured" class="ig-soon">
       <div class="ig-soon__inner">
         <div class="ig-soon__mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -144,7 +167,7 @@ watch(siteId, loadConnect)
             </div>
           </div>
         </div>
-        <RouterLink to="/admin/content" class="adm-btn adm-btn--primary">Upload photos manually</RouterLink>
+        <button type="button" class="adm-btn adm-btn--primary" @click="tab = 'gallery'">Upload photos in the Gallery tab</button>
       </div>
     </div>
 
@@ -215,6 +238,8 @@ watch(siteId, loadConnect)
           </a>
         </div>
       </div>
+    </template>
+      </template>
     </template>
   </section>
 </template>

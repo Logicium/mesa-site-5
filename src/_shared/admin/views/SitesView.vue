@@ -38,12 +38,12 @@ const deployProgress = ref<Record<string, DeployProgress | null>>({})
 const deployTimers: Record<string, ReturnType<typeof setTimeout> | null> = {}
 
 const PHASE_LABEL: Record<DeployPhase, string> = {
-  QUEUED: 'Queued â€” waiting for Vercel to pick up the build',
+  QUEUED: 'Queued — waiting for Vercel to pick up the build',
   INITIALIZING: 'Initializing build environment',
   BUILDING: 'Building site (installing deps, compiling)',
   UPLOADING: 'Uploading build output',
   DEPLOYING: 'Deploying to production',
-  READY: 'Live âœ“',
+  READY: 'Live ✓',
   ERROR: 'Build failed',
   CANCELED: 'Deployment canceled',
   UNKNOWN: 'Waiting for deployment to start',
@@ -55,7 +55,7 @@ const PHASE_PERCENT: Record<DeployPhase, number> = {
 function startDeployTracking(
   siteId: string,
   deploymentId: string | null,
-  initialLabel = 'Startingâ€¦',
+  initialLabel = 'Starting…',
   priorDeploymentId: string | null = null,
 ) {
   // Cancel any previous tracker for this site
@@ -92,9 +92,9 @@ function startDeployTracking(
         deployProgress.value[siteId] = {
           ...prev,
           state: 'UNKNOWN',
-          // Don't latch onto the stale deploymentId â€” keep polling "latest".
+          // Don't latch onto the stale deploymentId — keep polling "latest".
           deploymentId: prev.deploymentId,
-          label: 'Waiting for new deployment to startâ€¦',
+          label: 'Waiting for new deployment to start…',
           percent: Math.max(prev.percent, 8),
           failed: false,
         }
@@ -133,7 +133,7 @@ function startDeployTracking(
       }
       deployTimers[siteId] = setTimeout(tick, 3_000)
     } catch {
-      // Transient API hiccup â€” keep polling
+      // Transient API hiccup — keep polling
       deployTimers[siteId] = setTimeout(tick, 5_000)
     }
   }
@@ -350,7 +350,7 @@ async function toggleShowDeactivated() {
 
 async function confirmDeactivate(s: { id: string; slug: string; displayName?: string | null }) {
   const name = siteTitle(s)
-  if (!confirm(`Deactivate â€œ${name}â€?\n\nThe site stays online for visitors but is hidden from the admin list. You can reactivate it later from â€œShow deactivated.â€`)) return
+  if (!confirm(`Deactivate “${name}”?\n\nThe site stays online for visitors but is hidden from the admin list. You can reactivate it later from “Show deactivated.”`)) return
   deactivating.value[s.id] = true
   try {
     await contentClient.deactivateSite(s.id)
@@ -402,9 +402,9 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
         <span class="adm-eyebrow">Studio</span>
         <h1 class="adm-title">Your sites</h1>
         <p class="adm-subtitle">
-          <template v-if="loading">Loadingâ€¦</template>
-          <template v-else-if="!sites.length">Nothing here yet â€” your first site will appear once itâ€™s provisioned.</template>
-          <template v-else>{{ liveCount }} of {{ sites.length }} live Â· click a card to open it in a new tab.</template>
+          <template v-if="loading">Loading…</template>
+          <template v-else-if="!sites.length">Nothing here yet — your first site will appear once it’s provisioned.</template>
+          <template v-else>{{ liveCount }} of {{ sites.length }} live · click a card to open it in a new tab.</template>
         </p>
       </div>
       <div class="adm-page__head-actions">
@@ -431,7 +431,7 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
         :refreshing-screenshot="refreshingScreenshot[s.id]"
         :screenshot-error="screenshotErr[s.id]"
         :deploy-progress="deployProgress[s.id]"
-        :notice="[redeployMsg[s.id], updateMsg[s.id], reprovisionMsg[s.id]].filter(Boolean).join(' Â· ')"
+        :notice="[redeployMsg[s.id], updateMsg[s.id], reprovisionMsg[s.id]].filter(Boolean).join(' · ')"
         :billing-open="billingOpen[s.id]"
         :billing="billing[s.id]"
         :billing-loading="billingLoading[s.id]"
@@ -453,7 +453,7 @@ const liveCount = computed(() => sites.value.filter(s => liveUrl(s)).length)
     </div>
 
     <div v-else-if="!loading && !error" class="adm-empty">
-      <div class="adm-empty__icon">â—‡</div>
+      <div class="adm-empty__icon">◇</div>
       <h2 class="adm-empty__title">No sites yet</h2>
       <p class="adm-empty__body">Your sites will appear here as they finish provisioning.</p>
     </div>

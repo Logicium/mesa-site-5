@@ -191,7 +191,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
+      <p v-if="loading" class="adm-muted">Loading…</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -214,7 +214,7 @@ watch(siteId, load)
             <div class="rm-row__img"><ImageInput :model-value="p.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => p.imageUrl = v" /></div>
             <div class="rm-row__active"><ToggleInput v-model="p.active" label="Live" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="saveProduct(p)">Save</button>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteProduct(p)">Ã—</button>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteProduct(p)">×</button>
           </li>
         </ul>
         <p v-else class="adm-muted adm-mb">No products yet.</p>
@@ -252,7 +252,7 @@ watch(siteId, load)
             <textarea class="adm-input" rows="2" v-model="resolved.pickupInstructions" />
           </label>
           <label class="adm-field adm-field--full">
-            <span>Notification email (optional â€” defaults to your account email)</span>
+            <span>Notification email (optional — defaults to your account email)</span>
             <input class="adm-input" type="email" v-model="resolved.notifyEmail" />
           </label>
         </div>
@@ -260,7 +260,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
+          {{ saving ? 'Saving…' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -277,10 +277,10 @@ watch(siteId, load)
               <td>{{ new Date(o.createdAt).toLocaleString() }}</td>
               <td>
                 {{ o.name }}<br />
-                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> Â· {{ o.phone }}</template></small>
+                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> · {{ o.phone }}</template></small>
               </td>
               <td>
-                <div v-for="it in o.items" :key="it.productId">{{ it.name }} Ã— {{ it.quantity }}</div>
+                <div v-for="it in o.items" :key="it.productId">{{ it.name }} × {{ it.quantity }}</div>
               </td>
               <td>{{ o.fulfillment }}</td>
               <td>{{ money(o.totalCents, o.currency) }}</td>

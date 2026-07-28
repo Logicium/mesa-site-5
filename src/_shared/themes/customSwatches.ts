@@ -14,11 +14,11 @@ import type { ColorSwatch } from './tokens'
 export type HarmonyModel = 'complementary' | 'analogous' | 'triadic' | 'split' | 'mono'
 
 export const HARMONY_MODELS: Array<{ id: HarmonyModel; label: string; blurb: string }> = [
-  { id: 'complementary', label: 'Complementary', blurb: 'Opposites on the wheel — maximum contrast, bold energy' },
-  { id: 'analogous', label: 'Analogous', blurb: 'Neighbors on the wheel — harmonious, easy on the eye' },
-  { id: 'triadic', label: 'Triadic', blurb: 'Three evenly spaced hues — vibrant but balanced' },
-  { id: 'split', label: 'Split-complement', blurb: 'A hue plus the two beside its opposite — contrast, softened' },
-  { id: 'mono', label: 'Monochrome', blurb: 'One hue, many depths — quiet and sophisticated' },
+  { id: 'complementary', label: 'Complementary', blurb: 'Opposites on the wheel. Maximum contrast, bold energy' },
+  { id: 'analogous', label: 'Analogous', blurb: 'Neighbors on the wheel. Harmonious, easy on the eye' },
+  { id: 'triadic', label: 'Triadic', blurb: 'Three evenly spaced hues. Vibrant but balanced' },
+  { id: 'split', label: 'Split-complement', blurb: 'A hue plus the two beside its opposite. Softened contrast' },
+  { id: 'mono', label: 'Monochrome', blurb: 'One hue, many depths. Quiet and sophisticated' },
 ]
 
 /* ── Color math (hex ↔ HSL) ────────────────────────────────── */
@@ -81,23 +81,23 @@ export function buildPalette(baseHue: number, harmony: HarmonyModel, mode: 'ligh
   const ah = accentHue(h, harmony)
   if (mode === 'light') {
     return {
-      primary: hslToHex(h, harmony === 'mono' ? 0.45 : 0.62, 0.38),
-      accent: hslToHex(ah, harmony === 'mono' ? 0.30 : 0.72, harmony === 'mono' ? 0.55 : 0.56),
-      surface: hslToHex(h, 0.30, 0.945),
-      surfaceAlt: hslToHex(h, 0.35, 0.985),
-      ink: hslToHex(h, 0.28, 0.10),
-      inkMuted: hslToHex(h, 0.14, 0.36),
-      line: hslToHex(h, 0.26, 0.86),
+      primary: hslToHex(h, harmony === 'mono' ? 0.50 : 0.74, 0.36),
+      accent: hslToHex(ah, harmony === 'mono' ? 0.34 : 0.80, harmony === 'mono' ? 0.55 : 0.54),
+      surface: hslToHex(h, 0.42, 0.925),
+      surfaceAlt: hslToHex(h, 0.48, 0.975),
+      ink: hslToHex(h, 0.32, 0.09),
+      inkMuted: hslToHex(h, 0.16, 0.34),
+      line: hslToHex(h, 0.34, 0.83),
     }
   }
   return {
-    primary: hslToHex(h, 0.78, 0.68),
-    accent: hslToHex(ah, 0.70, 0.62),
-    surface: hslToHex(h, 0.38, 0.075),
-    surfaceAlt: hslToHex(h, 0.34, 0.13),
-    ink: hslToHex(h, 0.45, 0.95),
-    inkMuted: hslToHex(h, 0.16, 0.62),
-    line: hslToHex(h, 0.32, 0.22),
+    primary: hslToHex(h, 0.84, 0.68),
+    accent: hslToHex(ah, 0.78, 0.60),
+    surface: hslToHex(h, 0.44, 0.065),
+    surfaceAlt: hslToHex(h, 0.38, 0.12),
+    ink: hslToHex(h, 0.48, 0.95),
+    inkMuted: hslToHex(h, 0.18, 0.62),
+    line: hslToHex(h, 0.36, 0.21),
   }
 }
 

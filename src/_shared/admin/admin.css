@@ -154,6 +154,78 @@
 }
 .adm-card__sub { color: var(--adm-text-muted); font-size: 0.88rem; margin: 0 0 1rem; }
 
+/* ── Page lock while the dashboard overlay is open ─────────────
+   The shell is `position: fixed` above the live site; without this the
+   site behind still scrolls under it. Applied to <html> by AdminLayout. */
+html.ap-admin-open, html.ap-admin-open body {
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+/* ── Native scrollbars inside the admin ─────────────────────────
+   scrollbar.css hides native bars globally (!important on *) in favor of
+   the JS overlay bar — but that system is excluded from the admin shell
+   (it reparents Vue-managed panels). Re-enable a quiet thin native bar
+   here; these rules out-specify the global hide and load after it. */
+.admin-shell,
+.admin-shell * {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--adm-border-strong) transparent;
+}
+.admin-shell ::-webkit-scrollbar,
+.admin-shell::-webkit-scrollbar {
+  display: block !important;
+  width: 10px !important;
+  height: 10px !important;
+  background: transparent !important;
+}
+.admin-shell ::-webkit-scrollbar-thumb,
+.admin-shell::-webkit-scrollbar-thumb {
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  background: var(--adm-border-strong) !important;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.admin-shell ::-webkit-scrollbar-track {
+  display: block !important;
+  background: transparent !important;
+}
+
+/* ── Tabs — page-level section switcher ─────────────────────── */
+
+.adm-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--adm-border-strong);
+  border-radius: var(--adm-radius);
+  background: var(--adm-surface);
+}
+.adm-tab {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  padding: 0.45rem 0.95rem;
+  border: 0;
+  border-radius: calc(var(--adm-radius) - 3px);
+  background: transparent;
+  color: var(--adm-text-muted);
+  font: inherit; font-size: 0.84rem; font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.adm-tab svg { display: block; }
+.adm-tab:hover { color: var(--adm-text); }
+.adm-tab.is-active {
+  background: var(--adm-surface-3);
+  color: var(--adm-text);
+  box-shadow: inset 0 0 0 1px var(--adm-border-strong);
+}
+.adm-tab.is-active svg { color: var(--adm-accent); }
+
 /* ── Buttons — machined, quiet until needed ────────────────── */
 
 .adm-btn {

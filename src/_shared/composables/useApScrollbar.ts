@@ -259,6 +259,13 @@ function isScrollable(value: string): boolean {
 }
 
 function scanScrollers() {
+  // Reap orphaned wrappers: wrapForBar() reparents elements Vue owns, so a
+  // route unmount can leave an empty flex wrap (+ bar) behind. Left in
+  // place they shred the re-rendered page into flex columns.
+  document.querySelectorAll<HTMLElement>('.ap-cscroll-wrap').forEach((w) => {
+    if (!w.querySelector('.ap-cscroll-host')) w.remove()
+  })
+
   // Explicit opt-ins first
   document.querySelectorAll<HTMLElement>('.ap-scroll-x').forEach((el) => inlineScrollbar(el, 'x'))
   document.querySelectorAll<HTMLElement>('.ap-scroll-y').forEach((el) => inlineScrollbar(el, 'y'))
@@ -270,6 +277,9 @@ function scanScrollers() {
     if (el.classList.contains('ap-cscroll-wrap')) continue
     // Skip anything that lives inside a custom scrollbar's chrome.
     if (el.closest('.ap-cscroll')) continue
+    // The admin overlay manages its own (native, thin) scrollbars — wrapping
+    // its Vue-managed panels breaks their flex widths and corrupts unmount.
+    if (el.closest('.admin-shell')) continue
     if (el.tagName === 'HTML' || el.tagName === 'BODY') continue
     const cs = getComputedStyle(el)
     const sx = isScrollable(cs.overflowX)

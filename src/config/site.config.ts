@@ -58,8 +58,8 @@ export const siteConfig: MesaSiteConfig = reactive(({
   brand: 'Mesa Trinidad',
   tagline: 'Wood-fired kitchen',
   blurb: 'A neighborhood kitchen serving Southern Colorado classics with a wood-fired heart.',
-  theme: 'studio',
-  swatch: 'sand',
+  theme: 'atlas',
+  swatch: 'vermilion-light',
   variant: 'essentials',
   contact: {
     address: '123 Main St, Trinidad, CO 81082',

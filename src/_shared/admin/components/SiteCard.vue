@@ -414,7 +414,9 @@ function menuAction(fn: () => void) {
   background: var(--adm-surface);
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-lg);
-  overflow: hidden;
+  /* No overflow clip here: the kebab menu must be able to extend past the
+     card. The hero clips itself; the top corners are rounded on it below. */
+  overflow: visible;
   box-shadow: var(--adm-shadow);
   transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
 }
@@ -424,6 +426,10 @@ function menuAction(fn: () => void) {
   box-shadow: var(--adm-shadow-lg);
 }
 .sc--deactivated { opacity: 0.6; filter: grayscale(0.5); }
+/* While the kebab menu is open, paint this card above its grid siblings so
+   the popover isn't covered by the next card. */
+.sc { position: relative; }
+.sc:has(.sc__menu) { z-index: 40; }
 
 /* ── Hero ── */
 .sc__hero {
@@ -433,6 +439,8 @@ function menuAction(fn: () => void) {
     radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--adm-accent) 7%, transparent), transparent 60%),
     var(--adm-surface-2);
   overflow: hidden;
+  /* The card no longer clips children, so round our own top corners. */
+  border-radius: calc(var(--adm-radius-lg) - 1px) calc(var(--adm-radius-lg) - 1px) 0 0;
   border-bottom: 1px solid var(--adm-border);
 }
 .sc__hero img {

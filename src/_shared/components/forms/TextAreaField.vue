@@ -48,18 +48,22 @@ const remaining = computed(() => props.maxlength - length.value)
   width: 100%;
   display: block;
 }
+/* Token bridge: inside the admin panel the --adm-* vars are set; on the
+   public site (wizard) they are not, so every use falls back to the site's
+   --ap-* palette. One component, both contexts. */
 .ta-field__input {
   display: block;
   width: 100%;
   margin: 0;
-  padding: 0.55rem 0.75rem;
-  background: var(--adm-surface-2);
-  color: var(--adm-text);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-radius-sm, 6px);
+  padding: 0.7rem 0.85rem;
+  min-height: 6rem;
+  background: var(--adm-surface-2, var(--ap-surface-alt, #fff));
+  color: var(--adm-text, var(--ap-ink, #111));
+  border: 1px solid var(--adm-border, var(--ap-line, #ccc));
+  border-radius: var(--adm-radius-sm, var(--ap-radius, 6px));
   font: inherit;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 0.92rem;
+  line-height: 1.55;
   /* Preserve user-entered line breaks visually so paragraphs aren't squished. */
   white-space: pre-wrap;
   resize: vertical;
@@ -68,8 +72,8 @@ const remaining = computed(() => props.maxlength - length.value)
 }
 .ta-field__input:focus {
   outline: none;
-  border-color: var(--adm-accent);
-  box-shadow: 0 0 0 3px var(--adm-accent-glow);
+  border-color: var(--adm-accent, var(--ap-primary, #888));
+  box-shadow: 0 0 0 3px var(--adm-accent-glow, color-mix(in srgb, var(--ap-primary, #888) 22%, transparent));
 }
 /* Minimalist "characters left" label sits BELOW the field, right-aligned, so
    it never overlaps the text being typed. */
@@ -80,11 +84,11 @@ const remaining = computed(() => props.maxlength - length.value)
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  color: var(--adm-text-subtle);
+  color: var(--adm-text-subtle, var(--ap-ink-muted, #888));
   pointer-events: none;
 }
 .ta-field--over .ta-field__counter {
-  color: var(--adm-danger);
+  color: var(--adm-danger, #d64545);
   font-weight: 600;
 }
 </style>

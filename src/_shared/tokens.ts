@@ -1,32 +1,14 @@
 /**
- * Theme token contracts shared across every Archetype site.
- * A "theme" defines feel (typography, spacing, shape).
- * A "swatch" defines color. They are composed at runtime.
- *
- * This file is the single source of truth — every archetype UI
- * re-exports these types from `src/themes/tokens.ts`.
+ * Platform-level archetype mapping. Theme/token contracts live in
+ * `src/themes/tokens.ts` (re-exported here so older imports keep working
+ * and there is exactly one definition of each type).
  */
 
-export type ThemeName = 'studio' | 'heritage' | 'vibrant'
-export type HeroStyle = '1' | '2' | '3' | '4' | '5' | '6'
-export type FooterStyle = '1' | '2' | '3' | '4' | '5'
-export type ContactStyle = '1' | '2' | '3' | '4' | '5'
-export type HoursStyle = '1' | '2' | '3' | '4' | '5'
-export type GalleryStyle = '1' | '2' | '3' | '4' | '5'
-export type ReviewsStyle = '1' | '2' | '3' | '4' | '5'
-export type SubheroStyle = '1' | '2' | '3' | '4' | '5'
-export type SiteStyle = '1' | '2' | '3' | '4' | '5'
-export type Alignment = 'left' | 'center'
+export type { ThemeName, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, Alignment, SwatchGroup, SwatchName, SiteVariant, Archetype } from './themes/tokens'
+export { VARIANT_PHOTO_COUNT, VARIANT_RANK, variantAtLeast, resolveVariant } from './themes/tokens'
 
-export type SwatchGroup = 'neutral' | 'earth' | 'warm' | 'bold' | 'dark' | 'neon'
+import type { Archetype } from './themes/tokens'
 
-export type SwatchName =
-  | 'sand' | 'forest' | 'sage' | 'sunset' | 'rose' | 'stone' | 'fiesta' | 'citrus'
-  | 'midnight' | 'obsidian' | 'ember' | 'plum'
-  | 'electric' | 'punch' | 'neon' | 'aurora'
-
-export type SiteVariant = 'essentials' | 'portfolio' | 'extended'
-export type Archetype = 'dine' | 'stay' | 'shop' | 'venue' | 'project' | 'utility'
 /** Maps an `Archetype` to its template repo key. */
 export type ArchetypeKey = 'mesa' | 'hearth' | 'vault' | 'marquee' | 'keystone'
 
@@ -36,10 +18,4 @@ export const ARCHETYPE_OF: Record<ArchetypeKey, Archetype> = {
   vault: 'shop',
   marquee: 'venue',
   keystone: 'utility',
-}
-
-export const VARIANT_PHOTO_COUNT: Record<SiteVariant, { gallery: number; max: number }> = {
-  essentials: { gallery: 6, max: 8 },
-  portfolio: { gallery: 12, max: 16 },
-  extended: { gallery: 20, max: 28 },
 }

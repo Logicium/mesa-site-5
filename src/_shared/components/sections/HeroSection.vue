@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, useTemplateRef } from 'vue'
 import OptimizedImage from '../OptimizedImage.vue'
 
-defineProps<{
+const props = defineProps<{
   eyebrow?: string
   title: string
   subtitle?: string
   image: string
   imageAlt?: string
+  /** Portfolio feature: extra frames turn the hero media into a crossfade
+      carousel. Pass [] or omit for the single-image hero. */
+  images?: Array<{ src: string; alt?: string }>
   ctaPrimary?: { label: string; to: string }
   ctaSecondary?: { label: string; to: string }
   /** Layout variant: 'split' shows image beside text, 'stage' is full-bleed image. */
@@ -15,6 +18,33 @@ defineProps<{
   /** When true, this is a subpage hero header — uses data-subhero-style for layout selection. */
   subpage?: boolean
 }>()
+
+/* ── Hero carousel (portfolio) ──
+   Reactive to the variant toggle: when a template starts passing frames the
+   carousel starts on the spot, and stops the moment they go away. */
+const frame = ref(0)
+const frames = computed(() => {
+  const extra = (props.images ?? []).filter(f => !!f.src)
+  return extra.length > 1 ? extra : [{ src: props.image, alt: props.imageAlt }]
+})
+let carouselTimer: ReturnType<typeof setInterval> | null = null
+function syncCarousel() {
+  if (carouselTimer) { clearInterval(carouselTimer); carouselTimer = null }
+  frame.value = 0
+  const reduced = typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (frames.value.length > 1 && !reduced) {
+    carouselTimer = setInterval(() => {
+      frame.value = (frame.value + 1) % frames.value.length
+    }, 5000)
+  }
+}
+watch(() => frames.value.length, syncCarousel)
+function pickFrame(i: number) {
+  frame.value = i
+  syncCarousel()
+  frame.value = i
+}
 
 // Scroll-driven parallax for the home hero. Sets --ap-hero-parallax-y
 // on the hero element so themes (notably Float, style 6) can translate
@@ -37,10 +67,12 @@ function onScroll() {
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   onScroll()
+  syncCarousel()
 })
 onUnmounted(() => {
   window.removeEventListener('scroll', onScroll)
   if (rafId !== null) cancelAnimationFrame(rafId)
+  if (carouselTimer) clearInterval(carouselTimer)
 })
 </script>
 
@@ -137,8 +169,27 @@ onUnmounted(() => {
           <router-link v-if="ctaSecondary" :to="ctaSecondary.to" class="ap-btn ap-btn--ghost">{{ ctaSecondary.label }}</router-link>
         </div>
       </div>
-      <div class="ap-hero__media">
-        <OptimizedImage :src="image" :alt="imageAlt || title" loading="eager" />
+      <div class="ap-hero__media" :class="{ 'is-carousel': frames.length > 1 }">
+        <OptimizedImage
+          v-for="(f, i) in frames"
+          :key="f.src + i"
+          :src="f.src"
+          :alt="f.alt || imageAlt || title"
+          :loading="i === 0 ? 'eager' : 'lazy'"
+          class="ap-hero__frame"
+          :class="{ 'is-active': i === frame }"
+        />
+        <div v-if="frames.length > 1" class="ap-hero__dots" role="tablist" aria-label="Hero photos">
+          <button
+            v-for="(f, i) in frames"
+            :key="'dot' + i"
+            type="button"
+            class="ap-hero__dot"
+            :class="{ 'is-active': i === frame }"
+            :aria-label="`Photo ${i + 1}`"
+            @click="pickFrame(i)"
+          />
+        </div>
       </div>
     </div>
   </section>
@@ -169,6 +220,39 @@ onUnmounted(() => {
   .ap-hero__inner { grid-template-columns: 1fr !important; }
   .ap-hero__media { order: -1; }
 }
+
+/* ── Portfolio hero carousel ──
+   First frame stays in flow so the media box keeps its themed aspect;
+   the rest stack behind it and crossfade. */
+.ap-hero__media.is-carousel { position: relative; }
+.ap-hero__media.is-carousel :deep(.ap-hero__frame) {
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+.ap-hero__media.is-carousel :deep(.ap-hero__frame:not(:first-of-type)) {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.ap-hero__media.is-carousel :deep(.ap-hero__frame.is-active) { opacity: 1; }
+.ap-hero__dots {
+  position: absolute; left: 0.9rem; bottom: 0.8rem; z-index: 3;
+  display: flex; gap: 0.4rem;
+}
+.ap-hero__dot {
+  width: 8px; height: 8px; padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--ap-surface) 80%, transparent);
+  background: color-mix(in srgb, var(--ap-surface) 35%, transparent);
+  cursor: pointer;
+  transition: background 200ms ease, transform 200ms ease;
+}
+.ap-hero__dot.is-active {
+  background: var(--ap-surface);
+  transform: scale(1.15);
+}
+[data-theme='atlas'] .ap-hero__dot,
+[data-theme='ironwood'] .ap-hero__dot { border-radius: 0; }
 
 /* ── Subpage hero variant gating ────────────────────── */
 .ap-subhero__compact,

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import { onMounted, computed, watch, ref, onBeforeUnmount } from 'vue'
-import { ExternalLink } from 'lucide-vue-next'
+import { onMounted, computed, watch, ref, onBeforeUnmount, type Component } from 'vue'
+import {
+  ExternalLink, PanelLeftClose, PanelLeftOpen, Menu, X,
+  LayoutGrid, FileText, Images, Inbox as InboxIcon, Star, LineChart,
+  Globe, CreditCard, Receipt, Rocket, UserRound, Gem, BookOpenText, Puzzle,
+  CalendarClock, BedDouble, ShoppingBag, UtensilsCrossed, Ticket,
+} from 'lucide-vue-next'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useActiveSiteStore } from '../platform/activeSiteStore'
 import ToastHost from './components/ToastHost.vue'
@@ -19,36 +24,93 @@ onMounted(async () => {
 
 watch(() => auth.owner?.id, async (id) => { if (id) await activeSites.refresh() })
 
-interface NavItem { to: string; label: string; exact?: boolean; premium?: boolean }
+interface NavItem { to: string; label: string; icon: Component; exact?: boolean; premium?: boolean }
+interface NavGroup { id: string; label: string; items: NavItem[] }
 
-const navItems: NavItem[] = [
-  { to: '/admin', label: 'Sites', exact: true },
-  { to: '/admin/content', label: 'Content' },
-  { to: '/admin/inbox', label: 'Inbox' },
-  { to: '/admin/reviews', label: 'Reviews' },
-  { to: '/admin/instagram', label: 'Instagram' },
-  { to: '/admin/analytics', label: 'Analytics' },
-  { to: '/admin/domain', label: 'Domain' },
-  { to: '/admin/payments', label: 'Payments' },
-  { to: '/admin/billing', label: 'Billing' },
-  { to: '/admin/deployments', label: 'Deployments' },
+/** Label of the archetype-specific catalog editor (menu, rooms, …). */
+const CATALOG_LABEL: Record<string, string> = {
+  mesa: 'Menu', hearth: 'Rooms', keystone: 'Services', vault: 'Products', marquee: 'Events', project: 'Mission',
+}
+
+/** Everything that edits or watches the CURRENTLY SELECTED site. */
+const siteNav: NavItem[] = [
+  { to: '/admin/brand', label: 'Brand', icon: Gem },
+  { to: '/admin/content', label: 'Content', icon: FileText },
+  { to: '/admin/instagram', label: 'Photos', icon: Images },
+  { to: '/admin/inbox', label: 'Inbox', icon: InboxIcon },
+  { to: '/admin/reviews', label: 'Reviews', icon: Star },
+  { to: '/admin/analytics', label: 'Analytics', icon: LineChart },
+  { to: '/admin/payments', label: 'Payments', icon: CreditCard },
+  { to: '/admin/domain', label: 'Domain', icon: Globe },
+  { to: '/admin/deployments', label: 'Deployments', icon: Rocket },
+]
+
+/** Owner-level tools that span every site. */
+const workspaceNav: NavItem[] = [
+  { to: '/admin', label: 'Sites', icon: LayoutGrid, exact: true },
+  { to: '/admin/billing', label: 'Billing', icon: Receipt },
+  { to: '/admin/account', label: 'Account', icon: UserRound },
 ]
 
 /** Each archetype's premium commerce feature — marked so the nav renders
     the ★ Premium badge and owners can tell it apart from included tools. */
 const PREMIUM_NAV: Record<string, NavItem> = {
-  keystone: { to: '/admin/appointments', label: 'Appointments', premium: true },
-  hearth:   { to: '/admin/lodging', label: 'Lodging', premium: true },
-  vault:    { to: '/admin/shop', label: 'Shop', premium: true },
-  mesa:     { to: '/admin/ordering', label: 'Ordering', premium: true },
-  marquee:  { to: '/admin/ticketing', label: 'Ticketing', premium: true },
+  keystone: { to: '/admin/appointments', label: 'Appointments', icon: CalendarClock, premium: true },
+  hearth:   { to: '/admin/lodging', label: 'Lodging', icon: BedDouble, premium: true },
+  vault:    { to: '/admin/shop', label: 'Shop', icon: ShoppingBag, premium: true },
+  mesa:     { to: '/admin/ordering', label: 'Ordering', icon: UtensilsCrossed, premium: true },
+  marquee:  { to: '/admin/ticketing', label: 'Ticketing', icon: Ticket, premium: true },
 }
 
-const visibleNavItems = computed<NavItem[]>(() => {
-  const arche = activeSites.sites.find(s => s.id === activeSites.activeId)?.archetype
-  const premium = arche ? PREMIUM_NAV[arche] : undefined
-  return premium ? [...navItems, premium] : navItems
+/** Add-on id → its admin tool nav item. */
+const ADDON_NAV: Record<string, NavItem> = {
+  appointments: PREMIUM_NAV.keystone!,
+  lodging: PREMIUM_NAV.hearth!,
+  eshop: PREMIUM_NAV.vault!,
+  ordering: PREMIUM_NAV.mesa!,
+  ticketing: PREMIUM_NAV.marquee!,
+}
+
+const navGroups = computed<NavGroup[]>(() => {
+  const site = activeSites.sites.find(s => s.id === activeSites.activeId)
+  const arche = site?.archetype
+  const items = [...siteNav]
+  // The archetype's catalog editor slots in right after Content.
+  items.splice(2, 0, { to: '/admin/catalog', label: CATALOG_LABEL[arche ?? ''] ?? 'Catalog', icon: BookOpenText })
+  // Premium tools: the archetype's native one plus anything enabled from
+  // the Add-ons page (beta: any archetype can run any tool).
+  const premiumTos = new Set<string>()
+  const native = arche ? PREMIUM_NAV[arche] : undefined
+  if (native) { items.push(native); premiumTos.add(native.to) }
+  for (const id of site?.addOns ?? []) {
+    const nav = ADDON_NAV[id]
+    if (nav && !premiumTos.has(nav.to)) { items.push(nav); premiumTos.add(nav.to) }
+  }
+  items.push({ to: '/admin/addons', label: 'Add-ons', icon: Puzzle })
+  return [
+    { id: 'site', label: 'This site', items },
+    { id: 'workspace', label: 'Workspace', items: workspaceNav },
+  ]
 })
+
+/* ── Fullscreen-overlay behavior: the dashboard slides in over the public
+   site and can be closed back out of. ── */
+const closing = ref(false)
+function closeAdmin() {
+  if (closing.value) return
+  closing.value = true
+  window.setTimeout(() => { void router.push('/') }, 300)
+}
+
+/* ── Sidebar state: collapsible to an icon rail; overlay drawer on mobile ── */
+const NAV_COLLAPSE_KEY = 'admin.navCollapsed'
+const navCollapsed = ref(localStorage.getItem(NAV_COLLAPSE_KEY) === '1')
+function toggleNavCollapsed() {
+  navCollapsed.value = !navCollapsed.value
+  try { localStorage.setItem(NAV_COLLAPSE_KEY, navCollapsed.value ? '1' : '0') } catch { /* */ }
+}
+const drawerOpen = ref(false)
+watch(() => route.fullPath, () => { drawerOpen.value = false })
 
 // Don't gate the verify page — it handles its own session flow and must always render.
 const requiresLogin = computed(() => !auth.owner && !auth.loading && route.name !== 'admin-login' && route.name !== 'admin-verify')
@@ -86,6 +148,12 @@ function onDocClick(e: MouseEvent) {
 onMounted(() => document.addEventListener('click', onDocClick))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
+/* While the dashboard overlay is up, the public page underneath must not
+   scroll — otherwise the wheel chains through to it and the whole site
+   appears to move behind the panel. */
+onMounted(() => { document.documentElement.classList.add('ap-admin-open') })
+onBeforeUnmount(() => { document.documentElement.classList.remove('ap-admin-open') })
+
 async function doLogout() {
   closeMenu()
   await auth.logout()
@@ -109,10 +177,20 @@ function initials(email?: string) {
 </script>
 
 <template>
-  <div class="admin-shell">
+  <div class="admin-shell" :class="{ 'is-closing': closing }">
     <header class="admin-bar">
       <div class="admin-bar__top">
         <div class="admin-bar__inner admin-bar__inner--top">
+          <button
+            v-if="auth.owner"
+            type="button"
+            class="nav-burger"
+            :aria-expanded="drawerOpen"
+            aria-label="Toggle navigation"
+            @click="drawerOpen = !drawerOpen"
+          >
+            <component :is="drawerOpen ? X : Menu" :size="18" />
+          </button>
           <RouterLink to="/admin" class="brand">
             <span class="brand__mark">A</span>
             <span class="brand__name">Apotome</span>
@@ -123,6 +201,17 @@ function initials(email?: string) {
           <div class="admin-bar__top-spacer" />
 
           <div v-if="showSiteSwitcher" class="site-switcher" ref="siteMenuRef">
+            <a
+              v-if="activeSite && siteUrl(activeSite)"
+              :href="siteUrl(activeSite)!"
+              target="_blank"
+              rel="noopener"
+              class="site-view-btn"
+              :title="`View ${siteLabel(activeSite)} live`"
+              :aria-label="`View ${siteLabel(activeSite)} live`"
+            >
+              <ExternalLink :size="14" />
+            </a>
             <button
               type="button"
               class="site-pill"
@@ -202,43 +291,132 @@ function initials(email?: string) {
               <RouterLink to="/admin/login" class="adm-btn adm-btn--primary adm-btn--sm">Sign in</RouterLink>
             </template>
           </div>
+
+          <button
+            type="button"
+            class="admin-close"
+            title="Close the dashboard and return to your site"
+            aria-label="Close dashboard"
+            @click="closeAdmin"
+          >
+            <X :size="17" />
+          </button>
         </div>
       </div>
 
-      <nav v-if="auth.owner" class="admin-nav admin-bar__bottom" aria-label="Admin sections">
-        <div class="admin-bar__inner admin-bar__inner--bottom">
-          <RouterLink
-            v-for="n in visibleNavItems" :key="n.to" :to="n.to"
-            :exact-active-class="n.exact ? 'active' : ''" active-class="active"
-            :class="{ 'nav-premium': n.premium }"
-            :title="n.premium ? 'Premium add-on' : undefined"
-          >{{ n.label }}<span v-if="n.premium" class="nav-premium__star" aria-label="Premium add-on">★</span></RouterLink>
-        </div>
-      </nav>
     </header>
 
-    <main class="admin-main">
-      <div v-if="requiresLogin" class="admin-gate">
-        <div class="adm-empty">
-          <div class="adm-empty__icon">⌬</div>
-          <h2 class="adm-empty__title">Sign in to your studio</h2>
-          <p class="adm-empty__body">Your sites, content, inbox and analytics live behind a secure sign-in.</p>
-          <RouterLink to="/admin/login" class="adm-btn adm-btn--primary">Sign in</RouterLink>
+    <div class="admin-body" :class="{ 'is-collapsed': navCollapsed, 'is-drawer-open': drawerOpen }">
+      <div v-if="drawerOpen" class="admin-scrim" @click="drawerOpen = false" />
+      <nav v-if="auth.owner" class="admin-side" aria-label="Admin sections">
+        <div class="admin-side__scroll">
+          <div v-for="g in navGroups" :key="g.id" class="admin-side__group">
+            <p class="admin-side__group-label">{{ g.label }}</p>
+            <RouterLink
+              v-for="n in g.items" :key="n.to" :to="n.to"
+              class="admin-side__link"
+              :exact-active-class="n.exact ? 'is-active' : ''" active-class="is-active"
+              :class="{ 'is-premium': n.premium }"
+              :title="navCollapsed ? n.label : (n.premium ? 'Premium add-on' : undefined)"
+            >
+              <span class="admin-side__icon"><component :is="n.icon" :size="17" :stroke-width="1.8" /></span>
+              <span class="admin-side__label">{{ n.label }}</span>
+              <span v-if="n.premium" class="admin-side__star" aria-label="Premium add-on">★</span>
+            </RouterLink>
+          </div>
         </div>
-      </div>
-      <RouterView v-else />
-    </main>
+        <button
+          type="button"
+          class="admin-side__collapse"
+          :title="navCollapsed ? 'Expand menu' : 'Collapse menu'"
+          @click="toggleNavCollapsed"
+        >
+          <span class="admin-side__icon"><component :is="navCollapsed ? PanelLeftOpen : PanelLeftClose" :size="17" :stroke-width="1.8" /></span>
+          <span class="admin-side__label">Collapse</span>
+        </button>
+      </nav>
+
+      <main class="admin-main">
+        <!-- The <main> is the scroll viewport (full width, so its scrollbar
+             rides the right edge of the window); this inner box carries the
+             reading width. Keeping those on one element put the scrollbar in
+             the middle of the screen. -->
+        <div class="admin-main__inner">
+          <div v-if="requiresLogin" class="admin-gate">
+            <div class="adm-empty">
+              <div class="adm-empty__icon">⌬</div>
+              <h2 class="adm-empty__title">Sign in to your studio</h2>
+              <p class="adm-empty__body">Your sites, content, inbox and analytics live behind a secure sign-in.</p>
+              <RouterLink to="/admin/login" class="adm-btn adm-btn--primary">Sign in</RouterLink>
+            </div>
+          </div>
+          <RouterView v-else />
+        </div>
+      </main>
+    </div>
     <ToastHost />
   </div>
 </template>
 
 <style scoped>
+/* The dashboard is a fullscreen overlay above the public site: it blooms in
+   on entry and settles out when closed. */
 .admin-shell {
-  min-height: 100vh; display: flex; flex-direction: column;
+  position: fixed; inset: 0; z-index: 90;
+  /* The shell itself never scrolls: the top bar and sidebar stay planted
+     and only .admin-main scrolls its page contents. */
+  overflow: hidden;
+  display: flex; flex-direction: column;
   background: var(--adm-bg);
   color: var(--adm-text);
   font-family: var(--adm-font-sans);
+  animation: admin-shell-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+.admin-shell.is-closing {
+  animation: admin-shell-out 300ms cubic-bezier(0.55, 0, 0.55, 0.2) both;
+  pointer-events: none;
+}
+@keyframes admin-shell-in {
+  from { opacity: 0; transform: translateY(26px) scale(0.985); filter: blur(6px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes admin-shell-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(20px) scale(0.99); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell, .admin-shell.is-closing { animation: none; }
+}
+
+.admin-close {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: transparent;
+  border: 1px solid var(--adm-border-strong);
+  border-radius: 50%;
+  color: var(--adm-text-muted);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, transform 200ms ease;
+}
+.admin-close svg { display: block; }
+.admin-close:hover {
+  background: var(--adm-surface-2);
+  color: var(--adm-text);
+  transform: rotate(90deg);
+}
+
+.site-view-btn {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  margin-right: 0.4rem;
+  border: 1px solid var(--adm-border-strong);
+  border-radius: var(--adm-radius-sm);
+  color: var(--adm-text-muted);
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.site-view-btn svg { display: block; }
+.site-view-btn:hover { color: var(--adm-accent); border-color: var(--adm-accent-deep); background: var(--adm-surface-2); }
+.site-switcher { display: inline-flex; align-items: center; }
 
 /* ── Top bar (two rows) ─────────────────────────────────
    Row 1 (top): brand, site picker, user pill — same compact height as the
@@ -266,17 +444,17 @@ function initials(email?: string) {
   min-height: 52px;
 }
 .admin-bar__top-spacer { flex: 1; }
-.admin-bar__bottom {
-  padding: 0.25rem 0 0.4rem;
-  border-top: 1px solid var(--adm-border-soft);
-  overflow-x: auto;
-  scrollbar-width: thin;
+.nav-burger {
+  display: none;
+  width: 34px; height: 34px;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--adm-border-strong);
+  border-radius: var(--adm-radius-sm);
+  color: var(--adm-text);
+  cursor: pointer;
 }
-.admin-bar__inner--bottom {
-  gap: 0.15rem; align-items: stretch;
-}
-.admin-bar__bottom::-webkit-scrollbar { height: 4px; }
-.admin-bar__bottom::-webkit-scrollbar-thumb { background: var(--adm-border-strong); border-radius: 2px; }
+.nav-burger svg { display: block; }
 
 .brand {
   display: inline-flex; align-items: center; gap: 0.55rem;
@@ -300,32 +478,107 @@ function initials(email?: string) {
   transform: translateY(1px);
 }
 
-.admin-nav { display: flex; gap: 0.15rem; }
-.admin-nav a {
-  color: var(--adm-text-muted);
-  text-decoration: none;
-  padding: 0.45rem 0.7rem 0.5rem;
-  font-size: 0.82rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+/* ── Body: sidebar + main ───────────────────────────────
+   The sidebar is a sticky icon+label rail, collapsible to icons only.
+   On small screens it becomes an overlay drawer toggled from the top bar. */
+.admin-body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+.admin-side {
+  --side-w: 218px;
+  width: var(--side-w);
+  flex: 0 0 auto;
+  height: 100%;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--adm-border);
+  background: color-mix(in srgb, var(--adm-surface) 55%, var(--adm-bg));
+  transition: width 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  overflow: hidden;
+}
+.admin-body.is-collapsed .admin-side { --side-w: 58px; }
+.admin-side__scroll {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 0.9rem 0.55rem 0.5rem;
+  scrollbar-width: thin;
+}
+.admin-side__group { margin-bottom: 1.1rem; }
+.admin-side__group-label {
+  margin: 0 0 0.35rem;
+  padding: 0 0.55rem;
+  font-family: var(--adm-font-mono);
+  font-size: 0.6rem; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--adm-text-subtle);
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: color 140ms, border-color 140ms;
+  transition: opacity 160ms ease;
 }
-.admin-nav a:hover { color: var(--adm-text); }
-.admin-nav a.active {
+.admin-body.is-collapsed .admin-side__group-label { opacity: 0; }
+.admin-body.is-collapsed .admin-side__group {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--adm-border-soft);
+}
+.admin-body.is-collapsed .admin-side__group:last-child { border-bottom: 0; }
+
+.admin-side__link,
+.admin-side__collapse {
+  display: flex; align-items: center; gap: 0.6rem;
+  width: 100%;
+  padding: 0.48rem 0.55rem;
+  border: 0; border-radius: var(--adm-radius-sm);
+  background: transparent;
+  color: var(--adm-text-muted);
+  font: inherit; font-size: 0.84rem; font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+  transition: background 140ms ease, color 140ms ease;
+}
+.admin-side__link:hover,
+.admin-side__collapse:hover { background: var(--adm-surface-2); color: var(--adm-text); }
+.admin-side__link.is-active {
+  background: color-mix(in srgb, var(--adm-accent) 11%, transparent);
   color: var(--adm-text);
-  border-bottom-color: var(--adm-accent);
 }
-/* Premium feature tab — gold-tinted with a star so it reads as an add-on. */
-.admin-nav a.nav-premium { color: var(--adm-accent); font-weight: 600; }
-.admin-nav a.nav-premium:hover { color: var(--adm-accent-deep, var(--adm-accent)); }
-.nav-premium__star {
-  font-size: 0.6rem;
-  margin-left: 0.3rem;
-  vertical-align: super;
-  opacity: 0.9;
+.admin-side__link.is-active::before {
+  content: '';
+  position: absolute; left: -0.55rem; top: 20%; bottom: 20%;
+  width: 2px; border-radius: 2px;
+  background: var(--adm-accent);
 }
+.admin-side__icon {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  flex: 0 0 auto;
+}
+.admin-side__icon svg { display: block; }
+.admin-side__link.is-active .admin-side__icon { color: var(--adm-accent); }
+.admin-side__label {
+  overflow: hidden; text-overflow: ellipsis;
+  transition: opacity 140ms ease;
+}
+.admin-body.is-collapsed .admin-side__label,
+.admin-body.is-collapsed .admin-side__star { opacity: 0; pointer-events: none; }
+/* Premium feature — gold-tinted with a star so it reads as an add-on. */
+.admin-side__link.is-premium { color: var(--adm-accent); font-weight: 600; }
+.admin-side__star { font-size: 0.6rem; margin-left: auto; opacity: 0.9; color: var(--adm-accent); }
+.admin-body.is-collapsed .admin-side__link.is-premium .admin-side__icon { color: var(--adm-accent); }
+
+.admin-side__collapse {
+  margin: 0.4rem 0.55rem 0.7rem;
+  width: calc(100% - 1.1rem);
+  border-top: 1px solid var(--adm-border-soft);
+  border-radius: 0;
+  padding-top: 0.65rem;
+  color: var(--adm-text-subtle);
+}
+.admin-scrim { display: none; }
 
 /* ── Site switcher (custom pill + popover, mirrors user pill) ───────────── */
 .site-switcher { position: relative; }
@@ -462,8 +715,20 @@ function initials(email?: string) {
 .user-menu__divider { height: 1px; background: var(--adm-border-soft); margin: 0.3rem 0; }
 
 /* ── Main ──────────────────────────────────────────────── */
+/* The scroll viewport: full width so its scrollbar sits at the window's
+   right edge, and `overscroll-behavior: contain` so reaching the end does
+   not chain the wheel through to the public page behind the overlay. */
 .admin-main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+/* The reading column. */
+.admin-main__inner {
   padding: 2rem 1.5rem 4rem;
   max-width: 1280px; width: 100%;
   margin: 0 auto;
@@ -475,5 +740,30 @@ function initials(email?: string) {
   .admin-bar__top { gap: 0.5rem; }
   .user-pill__email, .site-pill__sub { display: none; }
   .site-pill { max-width: 180px; }
+  .nav-burger { display: grid; }
+  /* Sidebar becomes an overlay drawer. */
+  .admin-side {
+    position: fixed;
+    left: 0; top: 53px; bottom: 0;
+    height: auto;
+    z-index: 60;
+    --side-w: 240px;
+    transform: translateX(-100%);
+    transition: transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
+    box-shadow: var(--adm-shadow-lg);
+  }
+  .admin-body.is-collapsed .admin-side { --side-w: 240px; }
+  .admin-body.is-collapsed .admin-side__label,
+  .admin-body.is-collapsed .admin-side__group-label,
+  .admin-body.is-collapsed .admin-side__star { opacity: 1; pointer-events: auto; }
+  .admin-body.is-drawer-open .admin-side { transform: translateX(0); }
+  .admin-side__collapse { display: none; }
+  .admin-scrim {
+    display: block;
+    position: fixed; inset: 53px 0 0 0;
+    background: color-mix(in srgb, var(--adm-bg) 55%, transparent);
+    backdrop-filter: blur(2px);
+    z-index: 55;
+  }
 }
 </style>

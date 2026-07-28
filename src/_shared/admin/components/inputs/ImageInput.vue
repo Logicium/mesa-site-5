@@ -5,8 +5,8 @@
  * v-model holds the image URL string. (Paste-URL entry was removed so every
  * image goes through a real upload — no stray external hotlinks.)
  */
-import { ref } from 'vue'
-import { ImagePlus } from 'lucide-vue-next'
+import { ref, watch } from 'vue'
+import { ImagePlus, ImageOff } from 'lucide-vue-next'
 import { contentClient } from '../../../platform/contentClient'
 
 const props = withDefaults(defineProps<{
@@ -26,6 +26,10 @@ const uploading = ref(false)
 const error = ref<string | null>(null)
 const dragging = ref(false)
 const fileEl = ref<HTMLInputElement | null>(null)
+/* A src that 404s (seed paths, deleted media) must never show the browser's
+   broken-image glyph — swap to a quiet placeholder instead. */
+const loadFailed = ref(false)
+watch(model, () => { loadFailed.value = false })
 
 function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -76,7 +80,11 @@ function onDrop(evt: DragEvent) {
     >
       <template v-if="model">
         <div class="ai-img__preview" :style="{ aspectRatio: aspect }">
-          <img :src="model" alt="" loading="lazy" />
+          <div v-if="loadFailed" class="ai-img__missing">
+            <ImageOff :size="18" />
+            <span>No photo yet</span>
+          </div>
+          <img v-else :src="model" alt="" loading="lazy" @error="loadFailed = true" />
         </div>
         <div class="ai-img__actions" @click.stop>
           <button type="button" class="ai-img__chip" @click="fileEl?.click()"><ImagePlus :size="12" /> Replace</button>
@@ -94,3 +102,17 @@ function onDrop(evt: DragEvent) {
     <span v-else-if="hint" class="ai-hint">{{ hint }}</span>
   </div>
 </template>
+
+<style scoped>
+.ai-img__missing {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.4rem;
+  color: var(--adm-text-subtle);
+  font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  background:
+    repeating-linear-gradient(45deg, transparent 0 12px, color-mix(in srgb, var(--adm-text) 3%, transparent) 12px 13px),
+    var(--adm-surface-2);
+}
+.ai-img__missing svg { opacity: 0.6; }
+</style>

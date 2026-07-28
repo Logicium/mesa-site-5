@@ -1,4 +1,4 @@
-import type { ColorSwatch, ThemeTokens, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, Alignment } from './tokens'
+import type { ColorSwatch, ThemeTokens, SiteVariant, Archetype, HeroStyle, FooterStyle, ContactStyle, HoursStyle, GalleryStyle, ReviewsStyle, SubheroStyle, SiteStyle, AboutStyle, NavStyle, Alignment } from './tokens'
 import { ARCHETYPE_FORM, markSvg } from '../brand/marks'
 
 /**
@@ -21,6 +21,8 @@ export function applyTheme(
   subheroStyle: SubheroStyle = '1',
   siteStyle: SiteStyle = '1',
   alignment: Alignment = 'left',
+  aboutStyle: AboutStyle = '1',
+  navStyle: NavStyle = '1',
 ): void {
   if (typeof document === 'undefined') return
   const root = document.documentElement
@@ -36,6 +38,13 @@ export function applyTheme(
   set('--ap-line', swatch.line)
   // On-primary text (used inside primary buttons).
   set('--ap-on-primary', swatch.mode === 'dark' ? swatch.surface : swatch.surfaceAlt)
+
+  // Bold-category swatches let color drive whole surfaces (broadsheet
+  // heroes, tinted bands). Styles hook on [data-swatch-energy='bold'].
+  root.setAttribute('data-swatch-energy', swatch.group === 'bold' ? 'bold' : 'standard')
+  root.setAttribute('data-swatch-group', swatch.group)
+  if (swatch.family) root.setAttribute('data-swatch-family', swatch.family)
+  else root.removeAttribute('data-swatch-family')
 
   // Typography
   set('--ap-font-heading', theme.fontHeading)
@@ -69,6 +78,8 @@ export function applyTheme(
   root.setAttribute('data-reviews-style', reviewsStyle)
   root.setAttribute('data-subhero-style', subheroStyle)
   root.setAttribute('data-site-style', siteStyle)
+  root.setAttribute('data-about-style', aboutStyle)
+  root.setAttribute('data-nav-style', navStyle)
   root.setAttribute('data-align', alignment)
   root.style.colorScheme = swatch.mode
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // ─── Types ───────────────────────────────────────────────────────────────────
 import { computed, onBeforeUnmount, onMounted, ref, watch, reactive } from 'vue'
+import { useRoute } from 'vue-router'
 import { contentClient } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
 import { tabsForArchetype, type TabId } from '../contentSchemas'
@@ -62,7 +63,7 @@ interface SiteContent {
 
 function blankContent(): SiteContent {
   return {
-    brand: '', tagline: '', blurb: '', favicon: '', theme: 'studio', swatch: 'sand', variant: 'essentials',
+    brand: '', tagline: '', blurb: '', favicon: '', theme: 'atlas', swatch: 'onyx-light', variant: 'essentials',
     contact: { address: '', phone: '', email: '', mapEmbedUrl: '' },
     hours: [{ day: '', open: '' }],
     photos: { hero: { src: '', alt: '' }, about: { src: '', alt: '' }, gallery: [] },
@@ -262,6 +263,12 @@ function applyPayload(raw: Record<string, unknown>) {
   if (p.social   !== undefined) replaceRows(c.social, asRows<SocialLink>(p.social))
 }
 
+/** Draft keys this view doesn't model (sections, style, …) — preserved
+    verbatim on save so publishing content never clobbers them, and the
+    Content page can edit the per-section heading text directly. */
+const extraPayload = ref<Record<string, unknown>>({})
+const MODELED_KEYS = new Set(['brand', 'tagline', 'blurb', 'favicon', 'theme', 'swatch', 'variant', 'contact', 'hours', 'photos', 'story', 'menu', 'rooms', 'amenities', 'services', 'capabilities', 'featured', 'products', 'categories', 'events', 'mission', 'testimonials', 'reviewsSource', 'social'])
+
 async function loadDraft() {
   if (!siteId.value) return
   try {
@@ -272,6 +279,9 @@ async function loadDraft() {
     // through when switching sites in the header.
     Object.assign(c, blankContent())
     applyPayload(d.payload)
+    extraPayload.value = Object.fromEntries(
+      Object.entries(d.payload ?? {}).filter(([k]) => !MODELED_KEYS.has(k)),
+    )
   } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
 }
 
@@ -289,7 +299,10 @@ const ARCHETYPE_KEYS: Record<string, string[]> = {
 const ALL_ARCHETYPE_KEYS = ['menu', 'rooms', 'amenities', 'services', 'capabilities', 'featured', 'categories', 'events', 'mission']
 
 function payloadForSave(): Record<string, unknown> {
-  const payload = JSON.parse(JSON.stringify(c)) as Record<string, unknown>
+  const payload = {
+    ...JSON.parse(JSON.stringify(extraPayload.value)) as Record<string, unknown>,
+    ...JSON.parse(JSON.stringify(c)) as Record<string, unknown>,
+  }
   const keep = new Set(ARCHETYPE_KEYS[(archetype.value || '').toLowerCase()] ?? ALL_ARCHETYPE_KEYS)
   for (const k of ALL_ARCHETYPE_KEYS) {
     if (!keep.has(k)) delete payload[k]
@@ -333,42 +346,6 @@ function readAsDataUrl(file: Blob): Promise<string> {
   })
 }
 
-/** Read the file's bytes into base64 and pass through its original mime / name. */
-async function prepareImage(file: File): Promise<{ base64: string; contentType: string; filename: string }> {
-  const dataUrl = await readAsDataUrl(file)
-  return {
-    base64: dataUrl.split(',')[1] ?? '',
-    contentType: file.type || 'application/octet-stream',
-    filename: file.name,
-  }
-}
-
-async function uploadImage(slot: PhotoSlot, key: string, file: File) {
-  uploading.value[key] = true
-  try {
-    const { base64, contentType, filename } = await prepareImage(file)
-    const r = await contentClient.uploadMedia(siteId.value, filename, contentType, base64)
-    slot.src = r.url
-  } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
-  finally { uploading.value[key] = false }
-}
-
-
-/** Upload many gallery photos at once. Each file becomes a new gallery slot. */
-async function onBulkGalleryFiles(evt: Event) {
-  const input = evt.target as HTMLInputElement
-  const files = Array.from(input.files ?? [])
-  for (const file of files) {
-    const slot: PhotoSlot = { src: '', alt: '' }
-    c.photos.gallery.push(slot)
-    const idx = c.photos.gallery.length - 1
-    // Use the slot we just pushed; indexing back through the array yields
-    // `PhotoSlot | undefined` under noUncheckedIndexedAccess.
-    await uploadImage(slot, `g${idx}`, file)
-  }
-  input.value = ''
-}
-
 /** Upload the site's favicon (any image format the browser can read). */
 async function onFaviconFile(evt: Event) {
   const input = evt.target as HTMLInputElement
@@ -398,8 +375,6 @@ function addFact()                    { c.story.facts = c.story.facts ?? []; c.s
 function removeFact(i: number)        { c.story.facts!.splice(i, 1) }
 function addSocial()                  { c.social.push({ label: '', href: '', icon: '' }) }
 function removeSocial(i: number)      { c.social.splice(i, 1) }
-function addGallerySlot()             { c.photos.gallery.push({ src: '', alt: '' }) }
-function removeGallerySlot(i: number) { c.photos.gallery.splice(i, 1) }
 function addCategory()                { c.menu.categories.push({ name: '', description: '', items: [], image: '' }) }
 function removeCategory(i: number)    { c.menu.categories.splice(i, 1) }
 function addMenuItem(cat: MenuCategory)              { cat.items.push({ name: '', description: '', price: '', tags: [], image: '' }) }
@@ -480,12 +455,59 @@ onMounted(async () => {
   await loadDraft()
 })
 watch(siteId, loadDraft)
+
+/* ── Page modes ──
+   One view, three sidebar entries: Brand (identity + contact + hours +
+   social), Content (page text with a per-section breakdown), and the
+   archetype's catalog (menu / rooms / services / …). */
+const route = useRoute()
+const mode = computed<string>(() => (route.meta.contentSection as string) ?? 'content')
+const MODE_TABS: Record<string, TabId[]> = {
+  brand: ['brand', 'contact', 'hours', 'social'],
+  content: ['story'],
+  catalog: ['menu', 'rooms', 'services', 'products', 'events', 'mission'],
+}
+const modeTabs = computed(() => tabs.value.filter(t => (MODE_TABS[mode.value] ?? []).includes(t.id)))
+watch(modeTabs, (next) => {
+  if (!next.some(t => t.id === activeTab.value)) activeTab.value = next[0]?.id ?? 'brand'
+}, { immediate: true })
+const pageTitle = computed(() => {
+  if (mode.value === 'brand') return 'Brand'
+  if (mode.value === 'catalog') return modeTabs.value[0]?.label ?? 'Catalog'
+  return 'Content'
+})
+const pageEyebrow = computed(() =>
+  mode.value === 'brand' ? 'Identity' : mode.value === 'catalog' ? 'Catalog' : 'Copy')
+const pageSubtitle = computed(() => {
+  if (mode.value === 'brand') return 'Your name, voice, contact details, hours, and social links.'
+  if (mode.value === 'catalog') return 'The things you actually sell, listed and priced.'
+  return 'Every heading and paragraph on your pages, in one place.'
+})
+
+/** Turns 'galleryPage' / 'menu_page' into 'Gallery page'. */
+function labelize(key: string): string {
+  const words = key.replace(/[_-]/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+const sectionEntries = computed(() => {
+  const secs = extraPayload.value.sections
+  if (!secs || typeof secs !== 'object' || Array.isArray(secs)) return []
+  return Object.entries(secs as Record<string, Record<string, unknown>>)
+    .filter(([, v]) => v && typeof v === 'object' && !Array.isArray(v))
+})
+function stringFields(obj: Record<string, unknown>): Array<[string, string]> {
+  return Object.entries(obj).filter((e): e is [string, string] => typeof e[1] === 'string')
+}
 </script>
 
 <template>
-  <section class="cv">
-    <div class="cv-header">
-      <h1>Content</h1>
+  <section class="cv adm-page">
+    <header class="adm-page__head cv-header">
+      <div class="adm-page__title-block">
+        <span class="adm-eyebrow">{{ pageEyebrow }}</span>
+        <h1 class="adm-title">{{ pageTitle }}</h1>
+        <p class="adm-subtitle">{{ pageSubtitle }}</p>
+      </div>
       <div class="cv-header__right">
         <div v-if="siteId" ref="historyAnchor" class="history-wrap">
           <button
@@ -553,14 +575,14 @@ watch(siteId, loadDraft)
         <button type="button" @click="save(false)">Save draft</button>
         <button type="button" class="btn-primary" @click="save(true)">Publish</button>
       </div>
-    </div>
+    </header>
     <p v-if="!siteId" class="err">Select a site from the header dropdown.</p>
 
     <div v-if="siteId" class="cv-body">
-      <!-- Tab bar -->
-      <nav class="cv-tabs" role="tablist">
+      <!-- Tab bar (hidden when the page mode has a single tab) -->
+      <nav v-if="modeTabs.length > 1" class="cv-tabs" role="tablist">
         <button
-          v-for="t in tabs"
+          v-for="t in modeTabs"
           :key="t.id"
           type="button"
           role="tab"
@@ -635,36 +657,36 @@ watch(siteId, loadDraft)
         <button type="button" class="btn-add" @click="addHour">+ Add row</button>
       </fieldset>
 
-      <!-- ── Photos ── -->
-      <fieldset v-if="activeTab === 'photos'">
-        <legend>Photos</legend>
+      <!-- Photos moved to the dedicated Photos & Instagram page (slot-mapped
+           gallery lives at /admin/instagram). `c.photos` stays in the payload
+           round-trip untouched so nothing is clobbered on save. -->
 
-        <div class="photo-row">
-          <div class="photo-slot">
-            <ImageInput v-model="c.photos.hero.src" :site-id="siteId" label="Hero image" hint="16:9 · 2400px wide" />
-            <input v-model="c.photos.hero.alt" placeholder="Alt text" />
-            <input v-model="c.photos.hero.caption" placeholder="Caption (optional)" />
-          </div>
-          <div class="photo-slot">
-            <ImageInput v-model="c.photos.about.src" :site-id="siteId" label="About image" hint="Portrait or 4:5" aspect="4 / 5" />
-            <input v-model="c.photos.about.alt" placeholder="Alt text" />
-            <input v-model="c.photos.about.caption" placeholder="Caption (optional)" />
-          </div>
+      <!-- ── Hero: the same fields the on-page editor surfaces first ── -->
+      <fieldset v-if="mode === 'content' && activeTab === 'story'">
+        <legend>Home · hero</legend>
+        <label>Headline (business name)<input v-model="c.brand" /></label>
+        <div class="row-2">
+          <label>Eyebrow / tagline<input v-model="c.tagline" /></label>
         </div>
+        <label>Subtitle
+          <TextAreaField v-model="c.blurb" :rows="3" :maxlength="160" placeholder="One sentence about the business." />
+        </label>
+      </fieldset>
 
-        <p class="section-sub">Gallery <span class="hint">6–8 for essentials · 12–16 for portfolio · 20–28 for extended</span></p>
-        <div class="gallery-grid">
-          <div v-for="(g, i) in c.photos.gallery" :key="i" class="photo-slot photo-slot--sm">
-            <ImageInput v-model="g.src" :site-id="siteId" aspect="1 / 1" />
-            <input v-model="g.alt" placeholder="Alt text" />
-            <button type="button" class="btn-remove btn-remove--inline" @click="removeGallerySlot(i)">Remove</button>
+      <!-- ── Page text: every heading/eyebrow/note, broken down by section ── -->
+      <fieldset v-if="mode === 'content' && activeTab === 'story' && sectionEntries.length">
+        <legend>Page headings</legend>
+        <p class="meta">Full control over every section heading, eyebrow, and note across your pages.</p>
+        <div v-for="[secKey, fields] in sectionEntries" :key="secKey" class="cv-pagegroup">
+          <p class="cv-pagegroup__title">{{ labelize(secKey) }}</p>
+          <div class="row-2">
+            <label v-for="[fk] in stringFields(fields)" :key="fk">{{ labelize(fk) }}
+              <input
+                :value="fields[fk] as string"
+                @input="fields[fk] = ($event.target as HTMLInputElement).value"
+              />
+            </label>
           </div>
-        </div>
-        <div class="gallery-actions">
-          <button type="button" class="btn-add" @click="addGallerySlot">+ Add gallery photo</button>
-          <label class="file-btn file-btn--accent">+ Upload multiple
-            <input type="file" accept="image/*" multiple @change="onBulkGalleryFiles" />
-          </label>
         </div>
       </fieldset>
 
@@ -936,8 +958,9 @@ watch(siteId, loadDraft)
 .cv { max-width: 900px; }
 
 /* Header */
-.cv-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
-.cv-header h1 { margin: 0; font-family: var(--adm-font-serif); font-weight: 500; }
+/* Typography comes from the standard .adm-page__head / .adm-title pattern;
+   this class only lays out the right-side controls beside it. */
+.cv-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
 .cv-header__right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 /* Save draft / Publish are pill-shaped (matching the save-bar pill). */
 .cv-header__right > button { border-radius: 999px; padding-inline: 1.25rem; }
@@ -1368,4 +1391,8 @@ button:hover { border-color: var(--adm-accent); color: var(--adm-accent); }
   border-top: 1px solid var(--adm-border);
   margin-top: 0.5rem;
 }
+
+.cv-pagegroup { margin-bottom: 1.1rem; padding-top: 0.75rem; border-top: 1px dashed var(--adm-border-soft); }
+.cv-pagegroup:first-of-type { border-top: 0; padding-top: 0; }
+.cv-pagegroup__title { margin: 0 0 0.4rem; font-family: var(--adm-font-mono); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--adm-text-subtle); }
 </style>

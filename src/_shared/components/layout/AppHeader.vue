@@ -233,4 +233,130 @@ onUnmounted(() => {
   .ap-header__link:last-of-type { border-bottom: 0; }
   .ap-header__cta { margin-top: 0.75rem; align-self: flex-start; }
 }
+
+/* ── Navbar layout variants (data-nav-style on <html>) ──
+   1 Classic   — default row (above)
+   2 Editorial — logo left, links dead-center, action anchored right
+   3 Command   — full-bleed ruled bar: every item is a hairline cell,
+                 the CTA is an inverted ink cell (index-table nav)
+   4 Pill      — floating inset capsule, always centered */
+
+@media (min-width: 761px) {
+  /* 2 · Editorial: links dead-center in flow; brand and the primary
+     action pin to the edges so the centering is optical and exact. */
+  [data-nav-style='2'] .ap-header__row {
+    position: relative;
+    justify-content: center;
+    min-height: 64px;
+  }
+  [data-nav-style='2'] .ap-header__brand {
+    position: absolute;
+    left: clamp(1rem, 4vw, 2.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  [data-nav-style='2'] .ap-header__nav { justify-content: center; }
+  [data-nav-style='2'] .ap-header__link {
+    font-family: var(--ap-font-heading);
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+  }
+  [data-nav-style='2'] .ap-header__nav .ap-header__cta:not(.ap-header__secondary) {
+    position: absolute;
+    right: clamp(1rem, 4vw, 2.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+  }
+
+  /* 3 · Command bar */
+  [data-nav-style='3'] .ap-header {
+    background: var(--ap-surface);
+    backdrop-filter: none;
+    border-bottom: 1px solid var(--ap-ink);
+    box-shadow: none;
+  }
+  [data-nav-style='3'] .ap-header__row {
+    max-width: none;
+    padding: 0;
+    gap: 0;
+    align-items: stretch;
+    min-height: 58px;
+  }
+  [data-nav-style='3'] .ap-header__brand {
+    padding: 0.45rem clamp(1rem, 3vw, 2rem);
+    border-right: 1px solid var(--ap-line);
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+  }
+  [data-nav-style='3'] .ap-header__nav {
+    flex: 1;
+    gap: 0;
+    align-items: stretch;
+    justify-content: flex-end;
+  }
+  [data-nav-style='3'] .ap-header__link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 clamp(1rem, 2.2vw, 1.75rem);
+    border-left: 1px solid var(--ap-line);
+    font-family: var(--ap-font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border-bottom: 0;
+  }
+  [data-nav-style='3'] .ap-header__link.is-active {
+    background: color-mix(in srgb, var(--ap-ink) 6%, transparent);
+  }
+  [data-nav-style='3'] .ap-header__nav .ap-header__cta {
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    padding: 0 clamp(1.25rem, 3vw, 2.25rem);
+    border: 0;
+    border-left: 1px solid var(--ap-ink);
+    border-radius: 0;
+    background: var(--ap-ink);
+    color: var(--ap-surface);
+    font-family: var(--ap-font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    box-shadow: none;
+  }
+  [data-nav-style='3'] .ap-header__nav .ap-header__cta:hover {
+    background: var(--ap-primary);
+    color: var(--ap-on-primary);
+    transform: none;
+  }
+  [data-nav-style='3'] .ap-header__nav .ap-header__secondary {
+    background: transparent;
+    color: var(--ap-ink);
+  }
+
+  /* 4 · Pill — centered via left:50% so it survives position:fixed and
+     the scrolled state without drifting flush-left. */
+  [data-nav-style='4'] .ap-header {
+    left: 50%;
+    transform: translateX(-50%);
+    top: 0.8rem;
+    width: min(calc(100% - 2.5rem), var(--ap-container, 1200px));
+    border: 1px solid var(--ap-line);
+    border-radius: 999px;
+    box-shadow: 0 14px 40px -22px color-mix(in srgb, var(--ap-ink) 45%, transparent);
+    background: color-mix(in srgb, var(--ap-surface) 88%, transparent);
+    backdrop-filter: blur(14px);
+  }
+  [data-nav-style='4'] .ap-header__row { padding-block: 0.35rem; }
+  [data-nav-style='4'] .ap-header__cta { border-radius: 999px; }
+  [data-nav-style='4'][data-theme='atlas'] .ap-header,
+  [data-nav-style='4'][data-theme='ironwood'] .ap-header { border-radius: 0; }
+  [data-nav-style='4'][data-theme='atlas'] .ap-header__cta,
+  [data-nav-style='4'][data-theme='ironwood'] .ap-header__cta { border-radius: 0; }
+}
+
 </style>

@@ -98,6 +98,50 @@ async function load() {
   }
 }
 
+/* ── Menu link ──
+   Ordering is fed by the site's Menu content: one click imports every dish
+   that isn't already sellable, keeping the two in sync without retyping. */
+const importing = ref(false)
+const importStatus = ref<string | null>(null)
+async function importFromMenu() {
+  if (!siteId.value || importing.value) return
+  importing.value = true
+  importStatus.value = null
+  try {
+    const d = await contentClient.getDraft(siteId.value)
+    const cats = (d.payload.menu as { categories?: Array<{ name?: string; items?: Array<{ name?: string; description?: string; price?: string }> }> } | undefined)?.categories ?? []
+    const existing = new Set(items.value.map(i => i.name.toLowerCase()))
+    let added = 0
+    for (const cat of cats) {
+      for (const it of cat.items ?? []) {
+        const name = (it.name ?? '').trim()
+        if (!name || existing.has(name.toLowerCase())) continue
+        const priceCents = Math.round((parseFloat(String(it.price ?? '').replace(/[^0-9.]/g, '')) || 0) * 100)
+        const created = await contentClient.orderingCreateMenuItem(siteId.value, {
+          sku: (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `item-${added + 1}`).slice(0, 40),
+          name,
+          description: it.description?.trim() || undefined,
+          priceCents,
+          currency: resolved.value?.currency || 'USD',
+          category: cat.name?.trim() || '',
+          active: true,
+          sortOrder: items.value.length + added,
+        })
+        items.value.push(created)
+        existing.add(name.toLowerCase())
+        added++
+      }
+    }
+    importStatus.value = added
+      ? `Imported ${added} item${added === 1 ? '' : 's'} from your menu.`
+      : 'Everything on your menu is already sellable here.'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    importing.value = false
+  }
+}
+
 async function addItem() {
   if (!siteId.value) return
   const i = newItem.value
@@ -255,7 +299,7 @@ watch(siteId, load)
 
     <template v-else>
       <p v-if="error" class="adm-msg-err">{{ error }}</p>
-      <p v-if="loading" class="adm-muted">Loadingâ€¦</p>
+      <p v-if="loading" class="adm-muted">Loading…</p>
 
       <div v-if="!addOnEnabled" class="adm-card adm-card--soft addon-gate">
         <p>
@@ -266,6 +310,13 @@ watch(siteId, load)
 
       <section class="adm-card">
         <h2 class="adm-h2">Menu items</h2>
+        <div class="ord-import">
+          <button type="button" class="adm-btn adm-btn--sm" :disabled="importing" @click="importFromMenu">
+            {{ importing ? 'Importing…' : 'Import from your Menu' }}
+          </button>
+          <span class="adm-muted ord-import__hint">Linked to the Menu editor: pull every dish in, no retyping.</span>
+          <span v-if="importStatus" class="adm-msg-ok ord-import__status">{{ importStatus }}</span>
+        </div>
         <p class="adm-muted adm-mb">Items appear grouped by category on your ordering page.</p>
 
         <ul v-if="items.length" class="rm-list">
@@ -278,7 +329,7 @@ watch(siteId, load)
             <div class="rm-row__img"><ImageInput :model-value="p.imageUrl ?? ''" :site-id="siteId" aspect="1 / 1" @update:model-value="(v: string) => p.imageUrl = v" /></div>
             <div class="rm-row__active"><ToggleInput v-model="p.active" label="Live" /></div>
             <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="saveItem(p)">Save</button>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteItem(p)">Ã—</button>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="deleteItem(p)">×</button>
           </li>
         </ul>
         <p v-else class="adm-muted adm-mb">No menu items yet.</p>
@@ -350,7 +401,7 @@ watch(siteId, load)
 
       <div class="save-bar">
         <button type="button" class="adm-btn adm-btn--primary" :disabled="saving" @click="saveConfig">
-          {{ saving ? 'Savingâ€¦' : 'Save settings' }}
+          {{ saving ? 'Saving…' : 'Save settings' }}
         </button>
         <span v-if="savedAt" class="adm-muted">Saved {{ new Date(savedAt).toLocaleTimeString() }}</span>
       </div>
@@ -367,11 +418,11 @@ watch(siteId, load)
               <td>{{ pickupLocal(o.pickupAt) }}</td>
               <td>
                 {{ o.name }}<br />
-                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> Â· {{ o.phone }}</template></small>
+                <small><a :href="`mailto:${o.email}`">{{ o.email }}</a><template v-if="o.phone"> · {{ o.phone }}</template></small>
               </td>
               <td>
                 <div v-for="it in o.items" :key="it.menuItemId">
-                  {{ it.name }} Ã— {{ it.quantity }}<template v-if="it.notes"> <em>({{ it.notes }})</em></template>
+                  {{ it.name }} × {{ it.quantity }}<template v-if="it.notes"> <em>({{ it.notes }})</em></template>
                 </div>
               </td>
               <td>{{ money(o.totalCents, o.currency) }}</td>
@@ -453,4 +504,8 @@ watch(siteId, load)
 .adm-table th, .adm-table td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--adm-border); vertical-align: top; }
 .adm-table th { color: var(--adm-text-subtle); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
 .order-actions { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.ord-import { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.4rem 0 0.9rem; }
+.ord-import__hint { font-size: 0.78rem; }
+.ord-import__status { margin: 0; }
 </style>

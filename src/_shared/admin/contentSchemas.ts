@@ -28,11 +28,12 @@ export interface TabDef {
 
 export type ArchetypeName = 'mesa' | 'hearth' | 'keystone' | 'vault' | 'marquee' | 'project'
 
+// Photos moved to the dedicated Photos & Instagram admin page
+// (slot-mapped gallery at /admin/instagram).
 const COMMON_HEAD: TabDef[] = [
   { id: 'brand',   label: 'Brand'   },
   { id: 'contact', label: 'Contact' },
   { id: 'hours',   label: 'Hours'   },
-  { id: 'photos',  label: 'Photos'  },
   { id: 'story',   label: 'Story'   },
 ]
 // Testimonials moved to the standalone "Reviews" admin tab (it was redundant

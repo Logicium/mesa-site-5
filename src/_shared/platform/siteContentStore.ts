@@ -80,6 +80,20 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     return addOns.value.includes(name)
   }
 
+  /** The plan this site was purchased on ('essentials' | 'portfolio' | legacy
+      billing names like 'pro'). Populated by hydrate(); null off-platform. */
+  const plan = ref<string | null>(null)
+  /**
+   * Whether the PORTFOLIO tier is paid for. Off-platform builds (template
+   * dev, demos) always have it so the variant can be previewed; on the
+   * platform it is a paid upgrade.
+   */
+  const portfolioUnlocked = computed<boolean>(() => {
+    if (DEMO_MODE || !PLATFORM_ENABLED) return true
+    if (plan.value === null) return true // hydration pending/failed: never lock the owner out
+    return ['portfolio', 'pro', 'premium', 'extended'].includes(plan.value)
+  })
+
   const isPlatform = computed(() => PLATFORM_ENABLED && !!PLATFORM_SITE_KEY)
 
   /** 'manual' (hand-written testimonials) or 'google' (live reviews). */
@@ -139,6 +153,7 @@ export const useSiteContentStore = defineStore('siteContent', () => {
       const res = await contentClient.fetchContent()
       config.value = deepMerge(config.value, res.content)
       addOns.value = res.addOns ?? []
+      plan.value = res.plan ?? 'essentials'
       hydrated.value = true
       applyFavicon()
     } catch (e) {
@@ -228,6 +243,7 @@ export const useSiteContentStore = defineStore('siteContent', () => {
     instagramMedia, loadInstagram,
     ownedSiteId,
     addOns, hasAddOn,
+    plan, portfolioUnlocked,
     hydrate, setBuildTimeConfig, loadGoogleReviews,
     resolveOwnedSiteId, saveThemePatch,
   }

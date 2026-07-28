@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import { ChevronDown, Settings, Check, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, Globe, User, Save, Loader2, AlertCircle, Trash2, Plus, Pencil, CornerRightDown, ImagePlus, Move, Maximize2, Minimize2, X } from 'lucide-vue-next'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { ChevronDown, Settings, Check, CornerDownRight, AlignLeft, AlignCenter, Palette, SwatchBook, LayoutTemplate, LayoutGrid, User, Save, Loader2, AlertCircle, Trash2, Plus, Pencil, CornerRightDown, ImagePlus, Move, Maximize2, Minimize2, X, Sun, Moon, Lock, Sparkles } from 'lucide-vue-next'
 import { useSiteTheme } from '../composables/useSiteTheme'
 import { useSectionFlash } from '../composables/useSectionFlash'
 import { useContentEditor } from '../composables/useContentEditor'
@@ -9,7 +9,7 @@ import { usePreferences } from '../composables/usePreferences'
 import { useAdminAuthStore } from '../platform/adminAuthStore'
 import { useSiteContentStore } from '../platform/siteContentStore'
 import { THEME_LIST } from '../themes'
-import { SWATCH_LIST } from '../themes/swatches'
+import { SWATCH_FAMILIES, resolvePresetSwatch, type SwatchFamilyCard } from '../themes/swatches'
 import { SWATCH_THEORIES } from '../themes/tokens'
 import type { ColorSwatch } from '../themes/tokens'
 import {
@@ -22,12 +22,12 @@ const auth = useAdminAuthStore()
 const content = useSiteContentStore()
 const { state: prefs, setThemeAutosave } = usePreferences()
 
-// The Color Lab groups swatches by color theory — each group carries its
-// harmony model + psychological register so choosing color is informed,
-// not decorative guesswork.
+// The Color Studio groups palette families by category. Each family ships
+// a light and a dark version; the studio-level mode toggle decides which
+// one the cards preview and apply.
 const theoryGroups = computed(() => {
   return SWATCH_THEORIES
-    .map(t => ({ ...t, items: SWATCH_LIST.filter(s => s.group === t.id) }))
+    .map(t => ({ ...t, items: SWATCH_FAMILIES.filter(f => f.group === t.id) }))
     .filter(g => g.items.length > 0)
 })
 
@@ -35,16 +35,28 @@ const {
   themeName, swatchName, variant,
   heroStyle, footerStyle,
   contactStyle, hoursStyle, galleryStyle, reviewsStyle, subheroStyle,
-  siteStyle,
+  siteStyle, aboutStyle, navStyle,
   alignment,
   setTheme, setSwatch, setVariant,
   setHeroStyle, setFooterStyle,
   setContactStyle, setHoursStyle, setGalleryStyle, setReviewsStyle, setSubheroStyle,
-  setSiteStyle,
+  setSiteStyle, setAboutStyle, setNavStyle,
   setAlignment,
 } = useSiteTheme()
 
-const VARIANTS = ['essentials', 'portfolio', 'extended'] as const
+const VARIANTS = ['essentials', 'portfolio'] as const
+const VARIANT_LABELS: Record<string, string> = { essentials: 'Essentials', portfolio: 'Portfolio' }
+/** Portfolio is a paid size. Locked chips route to the upgrade note. */
+const portfolioUnlocked = computed(() => content.portfolioUnlocked)
+const upgradeOpen = ref(false)
+function pickVariant(v: (typeof VARIANTS)[number]) {
+  if (v === 'portfolio' && !portfolioUnlocked.value) {
+    upgradeOpen.value = true
+    return
+  }
+  upgradeOpen.value = false
+  setVariant(v)
+}
 const HERO_STYLES = ['1', '2', '3', '4', '5', '6'] as const
 const HERO_STYLE_LABELS: Record<string, string> = { '1': 'Default', '2': 'Overlay', '3': 'Broadsheet', '4': 'Split', '5': 'Marquee', '6': 'Float' }
 const FOOTER_STYLES = ['1', '2', '3', '4', '5'] as const
@@ -59,17 +71,21 @@ const REVIEWS_STYLES = ['1', '2', '3', '4', '5'] as const
 const REVIEWS_STYLE_LABELS: Record<string, string> = { '1': 'Default', '2': 'Spotlight', '3': 'Carousel', '4': 'Wall', '5': 'Ticker' }
 const SUBHERO_STYLES = ['1', '2', '3', '4', '5'] as const
 const SUBHERO_STYLE_LABELS: Record<string, string> = { '1': 'Compact', '2': 'Banner', '3': 'Centered', '4': 'Broadsheet', '5': 'Split' }
+const ABOUT_STYLES = ['1', '2', '3', '4'] as const
+const ABOUT_STYLE_LABELS: Record<string, string> = { '1': 'Classic', '2': 'Editorial', '3': 'Ledger', '4': 'Poster' }
+const NAV_STYLES = ['1', '2', '3', '4'] as const
+const NAV_STYLE_LABELS: Record<string, string> = { '1': 'Classic', '2': 'Editorial', '3': 'Command', '4': 'Pill' }
 const SITE_STYLES = ['1', '2', '3'] as const
 // project = wizard: Site style
 const SITE_STYLE_LABEL = 'Site style'
 const SITE_STYLE_LABELS: Record<string, string> = { '1': 'Default', '2': 'Alt', '3': 'Bold' }
 
-type Tab = 'edit' | 'theme' | 'color' | 'style' | 'sections' | 'global'
+type Tab = 'edit' | 'theme' | 'color' | 'style' | 'sections'
 const TAB_STORAGE_KEY = 'ap-switcher-tab'
 function readTab(): Tab {
   try {
     const v = localStorage.getItem(TAB_STORAGE_KEY)
-    if (v === 'edit' || v === 'theme' || v === 'color' || v === 'style' || v === 'sections' || v === 'global') return v
+    if (v === 'edit' || v === 'theme' || v === 'color' || v === 'style' || v === 'sections') return v
   } catch { /* storage unavailable */ }
   return 'theme'
 }
@@ -99,7 +115,19 @@ const dragging = ref(false)          // suppresses the morph transition while dr
 const winPos = ref(_w.winPos ?? { x: 0, y: 0 })
 const winSize = ref(_w.winSize?.w ? _w.winSize : { w: 400, h: 560 })
 
-function toggle() { open.value = !open.value }
+function toggle() {
+  open.value = !open.value
+  // A floating bar parked near a screen edge would open with its panel
+  // partly offscreen — nudge the window so the expanded size stays visible.
+  if (open.value && detached.value && !fullscreen.value) {
+    const w = winSize.value.w || 400
+    const h = winSize.value.h || 560
+    winPos.value = {
+      x: Math.min(Math.max(8, winPos.value.x), Math.max(8, window.innerWidth - w - 8)),
+      y: Math.min(Math.max(8, winPos.value.y), Math.max(8, window.innerHeight - h - 8)),
+    }
+  }
+}
 
 // Persist the full window state so a reload restores the picker exactly.
 watch([open, detached, fullscreen, winPos, winSize], () => {
@@ -212,26 +240,61 @@ function onPillClick() {
 /* ── Section-flash registry ──
    Each setting's eyebrow label is clickable; clicking scrolls to the element
    it controls and flashes inverted colors. If the element doesn't exist on
-   the current page, navigate to a fallback route and try again. */
+   the current page, navigate to a fallback route and try again.
+
+   Selectors include per-template aliases (marquee's hero, project's
+   campaign gallery, the testimonials root). Routes are CANDIDATES: each
+   template mounts a different subset (/contact vs /visit vs /book), so we
+   resolve the first candidate that actually exists in this app's router. */
 const { goto } = useSectionFlash()
+const router = useRouter()
 const sectionTargets = {
-  hero:      { selectors: ['.ap-hero'],                                  route: '/' },
-  subhero:   { selectors: ['.ap-subhero'],                               route: '/contact' },
-  footer:    { selectors: ['.ap-footer'],                                route: '/' },
-  site:      { selectors: ['.wiz', '.ap-section'], route: '/wizard' },
-  contact:   { selectors: ['.ap-contact'],                               route: '/contact' },
-  hours:     { selectors: ['.ap-hours'],                                 route: '/contact' },
-  gallery:   { selectors: ['.ap-gallery'],                               route: '/' },
-  reviews:   { selectors: ['.ap-reviews'],                               route: '/' },
+  hero:      { selectors: ['.ap-hero', '.ap-marquee-hero'],       routes: ['/'] },
+  subhero:   { selectors: ['.ap-subhero'],                        routes: ['/contact', '/visit', '/book'] },
+  footer:    { selectors: ['.ap-footer'],                         routes: ['/'] },
+  site:      { selectors: ['.wiz', '.ap-section'],                routes: ['/wizard', '/'] },
+  contact:   { selectors: ['.ap-contact'],                        routes: ['/contact', '/visit', '/book'] },
+  hours:     { selectors: ['.ap-hours'],                          routes: ['/contact', '/visit', '/book'] },
+  gallery:   { selectors: ['.ap-gallery', '.camp'],               routes: ['/', '/gallery'] },
+  reviews:   { selectors: ['.ap-reviews', '.ap-testimonials'],    routes: ['/'] },
+  about:     { selectors: ['.ap-about'],                          routes: ['/'] },
+  header:    { selectors: ['.ap-header'],                         routes: ['/'] },
 } as const
 function jumpTo(key: keyof typeof sectionTargets) {
   const t = sectionTargets[key]
-  goto({ selectors: [...t.selectors], route: t.route })
+  const known = new Set(router.getRoutes().map(r => r.path))
+  const route = t.routes.find(r => known.has(r))
+  goto({ selectors: [...t.selectors], route })
 }
 
 /* ── Config export (mirrors the original archetype-project switcher) ── */
 const currentSwatch = computed(() =>
-  SWATCH_LIST.find(s => s.name === swatchName.value) ?? customSwatches.value.find(s => s.name === swatchName.value))
+  resolvePresetSwatch(swatchName.value) ?? customSwatches.value.find(s => s.name === swatchName.value))
+
+/* ── Studio mode toggle: every preset family has a light + dark version.
+   The toggle previews and applies the matching side; picking a family
+   applies `<family>-<mode>`. */
+const pickerMode = ref<'light' | 'dark'>(currentSwatch.value?.mode ?? 'light')
+watch(swatchName, () => {
+  const m = currentSwatch.value?.mode
+  if (m) pickerMode.value = m
+})
+const currentFamily = computed(() => currentSwatch.value?.family ?? null)
+function familySwatch(f: SwatchFamilyCard): ColorSwatch {
+  return pickerMode.value === 'dark' ? f.dark : f.light
+}
+function pickFamily(f: SwatchFamilyCard) {
+  setSwatch(familySwatch(f).name)
+}
+function setPickerMode(m: 'light' | 'dark') {
+  pickerMode.value = m
+  // Keep the live site in sync when a preset family is active.
+  const fam = currentFamily.value
+  if (fam) {
+    const card = SWATCH_FAMILIES.find(x => x.family === fam)
+    if (card) setSwatch((m === 'dark' ? card.dark : card.light).name)
+  }
+}
 
 /* ── Palette builder (Color Lab) ──
    Pick a hue, a harmony model, and a mode; the builder derives a complete
@@ -265,14 +328,14 @@ function draftSwatch(): ColorSwatch {
     name: slugifyPaletteName(label),
     label,
     mode: builderMode.value,
-    group: builderMode.value === 'dark' ? 'dark' : 'bold',
+    group: builderMode.value === 'dark' ? 'noir' : 'bold',
     feel: `${HARMONY_MODELS.find(m => m.id === builderHarmony.value)?.label} palette built at ${builderHue.value}°`,
     ...builderPalette.value,
   }
 }
 
 function removeCustom(name: string) {
-  if (swatchName.value === name) setSwatch('sand')
+  if (swatchName.value === name) setSwatch('onyx-light')
   deleteCustomSwatch(name)
 }
 
@@ -316,21 +379,23 @@ watch([tab, open], () => { measure() })
    (so the wrapper visibly grows in width with the pill filling it, instead
    of momentarily collapsing to a zero-height bar). On close, restore the
    pill immediately so it's already in place when width snaps back. */
-const pillHidden = ref(false)
-const settled = ref(false)
+/* When the window state restores as already-open, the pill must start
+   hidden — the open-watcher only runs on CHANGES, so without this the
+   stretched pill's text floats over the middle of the restored panel. */
+const pillHidden = ref(_w.open === true)
+const settled = ref(_w.open === true)
 let pillTimer: ReturnType<typeof setTimeout> | null = null
 let settleTimer: ReturnType<typeof setTimeout> | null = null
 watch(open, (v) => {
   if (pillTimer) { clearTimeout(pillTimer); pillTimer = null }
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
   if (v) {
-    pillTimer = setTimeout(() => { pillHidden.value = true }, 360)
-    settleTimer = setTimeout(() => { settled.value = true }, 880)
+    pillTimer = setTimeout(() => { pillHidden.value = true }, 220)
+    settleTimer = setTimeout(() => { settled.value = true }, 720)
   } else {
     /* Keep the pill faded out while the panel collapses; restore it once the
-       height transition (520ms) has finished so it can fade in over the
-       width-collapse phase. */
-    pillTimer = setTimeout(() => { pillHidden.value = false }, 520)
+       height collapse has mostly finished so it fades in as width settles. */
+    pillTimer = setTimeout(() => { pillHidden.value = false }, 420)
     settled.value = false
   }
 })
@@ -352,11 +417,13 @@ const themeSnapshot = computed(() => ({
     subheroStyle: subheroStyle.value,
     footerStyle: footerStyle.value,
     siteStyle: siteStyle.value,
+    navStyle: navStyle.value,
     sections: {
       contact: contactStyle.value,
       hours: hoursStyle.value,
       gallery: galleryStyle.value,
       reviews: reviewsStyle.value,
+      about: aboutStyle.value,
     },
   },
 }))
@@ -480,7 +547,7 @@ watch(() => prefs.value.themeAutosave, (on) => {
           </RouterLink>
           <!-- Window controls -->
           <div class="ap-switcher__wins" @pointerdown.stop>
-            <button v-if="!detached && !fullscreen" type="button" class="ap-switcher__winbtn" title="Detach — drag it anywhere" @click="detach">
+            <button v-if="!detached && !fullscreen" type="button" class="ap-switcher__winbtn" title="Detach and drag it anywhere" @click="detach">
               <Move :size="15" />
             </button>
             <button v-else-if="detached && !fullscreen" type="button" class="ap-switcher__winbtn" title="Dock back to the corner" @click="dock">
@@ -524,7 +591,7 @@ watch(() => prefs.value.themeAutosave, (on) => {
                  : dirty ? 'Save changes' : 'Saved' }}
             </span>
           </button>
-          <label class="ap-switcher__autosave" :title="prefs.themeAutosave ? 'Autosave on — changes publish instantly' : 'Autosave off — click Save to publish'">
+          <label class="ap-switcher__autosave" :title="prefs.themeAutosave ? 'Autosave on. Changes publish instantly' : 'Autosave off. Click Save to publish'">
             <input
               type="checkbox"
               :checked="prefs.themeAutosave"
@@ -543,7 +610,6 @@ watch(() => prefs.value.themeAutosave, (on) => {
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'color' }" @click="tab = 'color'"><SwatchBook :size="14" /><span>color</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'style' }" @click="tab = 'style'"><LayoutTemplate :size="14" /><span>style</span></button>
           <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'sections' }" @click="tab = 'sections'"><LayoutGrid :size="14" /><span>sections</span></button>
-          <button type="button" role="tab" class="ap-switcher__tab" :class="{ 'is-active': tab === 'global' }" @click="tab = 'global'"><Globe :size="14" /><span>global</span></button>
         </div>
 
         <!-- Edit content -->
@@ -636,59 +702,97 @@ watch(() => prefs.value.themeAutosave, (on) => {
             </div>
           </div>
           <div>
-            <p class="ap-eyebrow">Variant</p>
+            <p class="ap-eyebrow">Size</p>
             <div class="ap-switcher__row">
-              <button v-for="v in VARIANTS" :key="v" type="button" class="ap-switcher__chip" :class="{ 'is-active': variant === v }" @click="setVariant(v)">{{ v }}</button>
+              <button
+                v-for="v in VARIANTS" :key="v" type="button"
+                class="ap-switcher__chip ap-switcher__chip--icon"
+                :class="{ 'is-active': variant === v, 'is-locked': v === 'portfolio' && !portfolioUnlocked }"
+                @click="pickVariant(v)"
+              >
+                <Lock v-if="v === 'portfolio' && !portfolioUnlocked" :size="12" />
+                {{ VARIANT_LABELS[v] }}
+              </button>
             </div>
+            <p v-if="upgradeOpen" class="ap-switcher__upgrade">
+              <Sparkles :size="13" />
+              <span>
+                Portfolio is a paid upgrade: hero carousel, photo-forward layouts, and up to 16 photos.
+                <a href="mailto:hello@apotomelabs.com?subject=Portfolio%20upgrade">Ask us to upgrade your site</a>
+              </span>
+            </p>
           </div>
           <div class="ap-switcher__span">
-            <p class="ap-eyebrow">Color</p>
+            <div class="ap-switcher__color-head">
+              <p class="ap-eyebrow">Color</p>
+              <div class="ap-modes" role="group" aria-label="Light or dark palette">
+                <button type="button" class="ap-modes__btn" :class="{ 'is-active': pickerMode === 'light' }" @click="setPickerMode('light')"><Sun :size="13" /> Light</button>
+                <button type="button" class="ap-modes__btn" :class="{ 'is-active': pickerMode === 'dark' }" @click="setPickerMode('dark')"><Moon :size="13" /> Dark</button>
+              </div>
+            </div>
             <div class="ap-switcher__colors">
               <button
-                v-for="s in SWATCH_LIST" :key="s.name" type="button"
-                class="ap-color" :class="{ 'is-active': swatchName === s.name }"
-                :title="s.label" :aria-label="s.label"
-                @click="setSwatch(s.name)"
+                v-for="f in SWATCH_FAMILIES" :key="f.family" type="button"
+                class="ap-color" :class="{ 'is-active': currentFamily === f.family }"
+                :title="f.label" :aria-label="f.label"
+                @click="pickFamily(f)"
               >
                 <span class="ap-color__chip" aria-hidden="true">
-                  <span :style="{ background: s.primary }" />
-                  <span :style="{ background: s.accent }" />
+                  <span :style="{ background: familySwatch(f).primary }" />
+                  <span :style="{ background: familySwatch(f).accent }" />
                 </span>
-                <span class="ap-color__name">{{ s.label }}</span>
+                <span class="ap-color__name">{{ f.label }}</span>
               </button>
             </div>
             <button type="button" class="ap-switcher__studio-link" @click="tab = 'color'">
               <SwatchBook :size="13" /> Fine-tune in the Color Studio
             </button>
           </div>
+          <div class="ap-switcher__span">
+            <p class="ap-eyebrow">Content alignment</p>
+            <div class="ap-switcher__row">
+              <button type="button" class="ap-switcher__chip ap-switcher__chip--icon" :class="{ 'is-active': alignment === 'left' }" @click="setAlignment('left')">
+                <AlignLeft :size="14" /> Left
+              </button>
+              <button type="button" class="ap-switcher__chip ap-switcher__chip--icon" :class="{ 'is-active': alignment === 'center' }" @click="setAlignment('center')">
+                <AlignCenter :size="14" /> Center
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Color Lab -->
+        <!-- Color Studio -->
         <div v-show="tab === 'color'" class="ap-switcher__panel">
           <div class="ap-switcher__span">
+            <div class="ap-lab__modes-row">
+              <span class="ap-eyebrow">Every palette comes in both</span>
+              <div class="ap-modes" role="group" aria-label="Light or dark palette">
+                <button type="button" class="ap-modes__btn" :class="{ 'is-active': pickerMode === 'light' }" @click="setPickerMode('light')"><Sun :size="13" /> Light</button>
+                <button type="button" class="ap-modes__btn" :class="{ 'is-active': pickerMode === 'dark' }" @click="setPickerMode('dark')"><Moon :size="13" /> Dark</button>
+              </div>
+            </div>
             <div v-for="grp in theoryGroups" :key="grp.id" class="ap-lab__theory">
               <div class="ap-lab__theory-head">
                 <span class="ap-lab__theory-name">{{ grp.label }}</span>
-                <span class="ap-lab__theory-harmony">{{ grp.harmony }}</span>
               </div>
-              <p class="ap-lab__theory-psy" :title="grp.psychology">{{ grp.psychology }}</p>
+              <p class="ap-lab__theory-sub">{{ grp.subtext }}</p>
               <div class="ap-lab__swatches">
                 <button
-                  v-for="s in grp.items"
-                  :key="s.name"
+                  v-for="f in grp.items"
+                  :key="f.family"
                   type="button"
                   class="ap-lab__swatch"
-                  :class="{ 'is-active': swatchName === s.name }"
-                  :style="{ background: s.surface, borderColor: swatchName === s.name ? s.primary : s.line }"
-                  :title="s.feel ? `${s.label} — ${s.feel}` : s.label"
-                  @click="setSwatch(s.name)"
+                  :class="{ 'is-active': currentFamily === f.family }"
+                  :style="{ background: familySwatch(f).surface, borderColor: currentFamily === f.family ? familySwatch(f).primary : familySwatch(f).line }"
+                  :title="familySwatch(f).feel ? `${f.label}. ${familySwatch(f).feel}` : f.label"
+                  @click="pickFamily(f)"
                 >
                   <span class="ap-lab__swatch-dots">
-                    <span :style="{ background: s.primary }" />
-                    <span :style="{ background: s.accent }" />
+                    <span :style="{ background: familySwatch(f).primary }" />
+                    <span :style="{ background: familySwatch(f).accent }" />
                   </span>
-                  <span class="ap-lab__swatch-name" :style="{ color: s.ink }">{{ s.label }}</span>
-                  <Check v-if="swatchName === s.name" :size="12" class="ap-lab__swatch-check" :style="{ color: s.primary }" />
+                  <span class="ap-lab__swatch-name" :style="{ color: familySwatch(f).ink }">{{ f.label }}</span>
+                  <Check v-if="currentFamily === f.family" :size="12" class="ap-lab__swatch-check" :style="{ color: familySwatch(f).primary }" />
                 </button>
               </div>
             </div>
@@ -719,7 +823,7 @@ watch(() => prefs.value.themeAutosave, (on) => {
                   </button>
                 </div>
               </div>
-              <p v-else class="ap-switcher__hint">No saved palettes yet — build one below.</p>
+              <p v-else class="ap-switcher__hint">No saved palettes yet. Build one below.</p>
 
               <button v-if="!builderOpen" type="button" class="ap-switcher__chip ap-switcher__chip--icon ap-lab__new" @click="builderOpen = true">
                 <Plus :size="14" /> New palette
@@ -798,6 +902,15 @@ watch(() => prefs.value.themeAutosave, (on) => {
             </div>
           </div>
           <div class="ap-switcher__span">
+            <button type="button" class="ap-switcher__group-head" @click="jumpTo('header')">
+              <span class="ap-eyebrow">Navbar style</span>
+              <CornerDownRight :size="12" />
+            </button>
+            <div class="ap-switcher__row">
+              <button v-for="s in NAV_STYLES" :key="s" type="button" class="ap-switcher__chip" :class="{ 'is-active': navStyle === s }" @click="setNavStyle(s)">{{ NAV_STYLE_LABELS[s] }}</button>
+            </div>
+          </div>
+          <div class="ap-switcher__span">
             <button type="button" class="ap-switcher__group-head" @click="jumpTo('footer')">
               <span class="ap-eyebrow">Footer style</span>
               <CornerDownRight :size="12" />
@@ -819,6 +932,15 @@ watch(() => prefs.value.themeAutosave, (on) => {
 
         <!-- Sections -->
         <div v-show="tab === 'sections'" class="ap-switcher__panel">
+          <div class="ap-switcher__span">
+            <button type="button" class="ap-switcher__group-head" @click="jumpTo('about')">
+              <span class="ap-eyebrow">About section</span>
+              <CornerDownRight :size="12" />
+            </button>
+            <div class="ap-switcher__row">
+              <button v-for="s in ABOUT_STYLES" :key="s" type="button" class="ap-switcher__chip" :class="{ 'is-active': aboutStyle === s }" @click="setAboutStyle(s)">{{ ABOUT_STYLE_LABELS[s] }}</button>
+            </div>
+          </div>
           <div class="ap-switcher__span">
             <button type="button" class="ap-switcher__group-head" @click="jumpTo('contact')">
               <span class="ap-eyebrow">Contact section</span>
@@ -857,31 +979,6 @@ watch(() => prefs.value.themeAutosave, (on) => {
           </div>
         </div>
 
-        <!-- Global -->
-        <div v-show="tab === 'global'" class="ap-switcher__panel">
-          <div class="ap-switcher__span">
-            <p class="ap-eyebrow">Content alignment</p>
-            <p class="ap-switcher__hint">Applies globally across all themes, components, and pages.</p>
-            <div class="ap-switcher__row">
-              <button
-                type="button"
-                class="ap-switcher__chip ap-switcher__chip--icon"
-                :class="{ 'is-active': alignment === 'left' }"
-                @click="setAlignment('left')"
-              >
-                <AlignLeft :size="14" /> Left
-              </button>
-              <button
-                type="button"
-                class="ap-switcher__chip ap-switcher__chip--icon"
-                :class="{ 'is-active': alignment === 'center' }"
-                @click="setAlignment('center')"
-              >
-                <AlignCenter :size="14" /> Center
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
     <!-- Resize grip — only on the open floating window (not the minimized bar) -->
@@ -930,16 +1027,20 @@ watch(() => prefs.value.themeAutosave, (on) => {
      docked panel collapses to an invisible sliver. */
   min-width: var(--ap-switcher-pill-w, max-content);
   max-width: min(640px, calc(100vw - 2rem));
-  transition: width 360ms cubic-bezier(0.2, 0.7, 0.3, 1) 520ms,
-              border-radius 360ms ease 520ms,
-              border-color 360ms ease 520ms,
-              background-color 360ms ease 520ms;
+  /* Staggered expansion: width and height run CONCURRENTLY on the same
+     settle-out bezier, height trailing by a beat — one fluid diagonal
+     bloom instead of two hard sequential stages. Closing reverses the
+     stagger (height leads, width trails). */
+  transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1) 90ms,
+              border-radius 420ms cubic-bezier(0.22, 1, 0.36, 1) 90ms,
+              border-color 360ms ease 90ms,
+              background-color 360ms ease 90ms;
 }
 .ap-switcher.is-open {
   width: 640px;
   border-radius: 18px;
-  transition: width 360ms cubic-bezier(0.2, 0.7, 0.3, 1) 0ms,
-              border-radius 360ms ease 0ms,
+  transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1) 0ms,
+              border-radius 420ms cubic-bezier(0.22, 1, 0.36, 1) 0ms,
               border-color 360ms ease 0ms,
               background-color 360ms ease 0ms;
 }
@@ -1028,11 +1129,11 @@ watch(() => prefs.value.themeAutosave, (on) => {
 .ap-switcher__expand {
   height: 0;
   overflow: hidden;
-  transition: height 520ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  transition: height 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .ap-switcher.is-open .ap-switcher__expand {
   height: var(--ap-switcher-h, auto);
-  transition: height 520ms cubic-bezier(0.2, 0.7, 0.3, 1) 360ms;
+  transition: height 560ms cubic-bezier(0.22, 1, 0.36, 1) 110ms;
 }
 /* Once fully open, tab switches re-measure --ap-switcher-h; remove the
    opening-stage delay so the height retunes immediately. */
@@ -1050,7 +1151,7 @@ watch(() => prefs.value.themeAutosave, (on) => {
    OUT immediately on close so it clears before height collapses. */
 .ap-switcher.is-open .ap-switcher__panel-wrap {
   opacity: 1;
-  transition: opacity 360ms ease 520ms;
+  transition: opacity 360ms ease 260ms;
 }
 .ap-switcher__head {
   display: flex; align-items: center; justify-content: space-between;
@@ -1299,13 +1400,17 @@ watch(() => prefs.value.themeAutosave, (on) => {
   transition: color 160ms ease, border-color 160ms ease;
 }
 .ap-switcher__group-head .ap-eyebrow { transition: color 160ms ease; }
-.ap-switcher__group-head :global(svg) {
+/* :deep, NOT :global — Vue compiles `x :global(svg)` by dropping the scoped
+   ancestor entirely, which shipped a literal global `svg { transform:
+   translateX(2px); opacity: .4 }` rule and nudged every icon on the whole
+   site 2px off center. */
+.ap-switcher__group-head :deep(svg) {
   opacity: 0.4;
   transition: opacity 160ms ease, transform 200ms ease;
 }
 .ap-switcher__group-head:hover { border-bottom-color: color-mix(in srgb, var(--ap-primary) 60%, transparent); }
 .ap-switcher__group-head:hover .ap-eyebrow { color: var(--ap-primary); }
-.ap-switcher__group-head:hover :global(svg) { opacity: 0.9; transform: translateX(2px); }
+.ap-switcher__group-head:hover :deep(svg) { opacity: 0.9; transform: translateX(2px); }
 .ap-switcher__row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
 .ap-switcher__chip {
   background: transparent; color: var(--ap-ink);
@@ -1322,6 +1427,22 @@ watch(() => prefs.value.themeAutosave, (on) => {
 .ap-switcher__chip--icon {
   display: inline-flex; align-items: center; gap: 0.4rem;
 }
+.ap-switcher__chip.is-locked {
+  opacity: 0.75;
+  border-style: dashed;
+}
+.ap-switcher__upgrade {
+  display: flex; align-items: flex-start; gap: 0.45rem;
+  margin: 0.55rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px dashed color-mix(in srgb, var(--ap-primary) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ap-primary) 7%, transparent);
+  font-size: 0.75rem; line-height: 1.45;
+  color: var(--ap-ink);
+}
+.ap-switcher__upgrade :deep(svg) { flex-shrink: 0; margin-top: 0.1rem; color: var(--ap-primary); }
+.ap-switcher__upgrade a { font-weight: 600; }
 .ap-switcher__swatch {
   width: 28px; height: 28px; border-radius: 50%;
   border: 2px solid color-mix(in srgb, var(--ap-line) 70%, transparent);
@@ -1351,14 +1472,44 @@ watch(() => prefs.value.themeAutosave, (on) => {
   font-size: 0.68rem; color: var(--ap-ink-muted);
   font-style: italic;
 }
-/* One-line mood summary — keeps the Color Studio compact (the multi-line
-   paragraph made each theory group far too tall). Full text on hover. */
-.ap-lab__theory-psy {
+/* One-line category subtext — the single line of meaning per group. */
+.ap-lab__theory-sub {
   margin: 0.1rem 0 0.5rem;
   font-size: 0.72rem; line-height: 1.4;
   color: var(--ap-ink-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 100%;
+}
+
+/* Studio-wide light/dark mode toggle */
+.ap-lab__modes-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.6rem; margin-bottom: 0.85rem;
+}
+.ap-switcher__color-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.6rem;
+}
+.ap-modes {
+  display: inline-flex; gap: 0;
+  border: 1px solid color-mix(in srgb, var(--ap-line) 85%, transparent);
+  border-radius: 999px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--ap-ink) 4%, transparent);
+}
+.ap-modes__btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  border: 0; background: transparent; cursor: pointer;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  font: inherit; font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ap-ink-muted);
+  transition: background 140ms ease, color 140ms ease;
+}
+.ap-modes__btn.is-active {
+  background: var(--ap-ink);
+  color: var(--ap-surface);
 }
 .ap-lab__swatches {
   display: grid;
