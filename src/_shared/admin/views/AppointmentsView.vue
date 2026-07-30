@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { contentClient, type BookingConfigDTO, type BookingServiceDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
 import NumberInput from '../components/inputs/NumberInput.vue'
@@ -22,8 +23,7 @@ const resolved = ref<Required<BookingConfigDTO> | null>(null)
 const services = ref<BookingServiceDTO[]>([])
 const addOnEnabled = ref(false)
 const bookings = ref<Awaited<ReturnType<typeof contentClient.listSiteBookings>>>([])
-
-const newService = ref<BookingServiceDTO>({ id: '', label: '', description: '', durationMinutes: 30 })
+const syncStatus = ref<string | null>(null)
 
 const DAYS = [
   { idx: 1, label: 'Mon' },
@@ -61,6 +61,37 @@ async function load() {
   } finally {
     loading.value = false
   }
+  void syncFromContent()
+}
+
+/* ── Services link ──
+   Bookable services ARE the site's Services content — no second list to
+   maintain. On load, anything on the Services page that isn't bookable yet
+   is added automatically (default 30 min; tune durations below). */
+async function syncFromContent() {
+  if (!siteId.value) return
+  try {
+    const d = await contentClient.getDraft(siteId.value)
+    const list = (d.payload.services as Array<{ name?: string; description?: string }> | undefined) ?? []
+    const existing = new Set(services.value.map(s => s.label.toLowerCase()))
+    let added = 0
+    for (const svc of list) {
+      const name = (svc.name ?? '').trim()
+      if (!name || existing.has(name.toLowerCase())) continue
+      services.value.push({
+        id: slugify(name) || `service-${services.value.length + 1}`,
+        label: name,
+        description: svc.description?.trim() || undefined,
+        durationMinutes: 30,
+      })
+      existing.add(name.toLowerCase())
+      added++
+    }
+    if (added) {
+      await saveConfig()
+      syncStatus.value = `Synced ${added} service${added === 1 ? '' : 's'} from your Services page.`
+    }
+  } catch { /* content draft unavailable — leave manual list as-is */ }
 }
 
 function parseHours(s: string): string[] {
@@ -101,18 +132,6 @@ async function saveConfig() {
   } finally {
     saving.value = false
   }
-}
-
-function addService() {
-  const s = newService.value
-  if (!s.id.trim() || !s.label.trim()) return
-  services.value.push({
-    id: s.id.trim(),
-    label: s.label.trim(),
-    description: s.description?.trim() || undefined,
-    durationMinutes: Math.max(5, Number(s.durationMinutes) || 30),
-  })
-  newService.value = { id: '', label: '', description: '', durationMinutes: 30 }
 }
 
 function removeService(i: number) {
@@ -190,7 +209,11 @@ watch(siteId, load)
         <!-- Services -->
         <section class="adm-card">
           <h2 class="adm-h2">Services</h2>
-          <p class="adm-muted adm-mb">Each service appears as a card on your booking widget.</p>
+          <p class="adm-muted adm-mb">
+            Linked to your <RouterLink to="/admin/catalog" class="adm-link">Services page</RouterLink> —
+            everything listed there is bookable automatically. Set durations here.
+          </p>
+          <p v-if="syncStatus" class="adm-muted adm-mb">{{ syncStatus }}</p>
 
           <ul v-if="services.length" class="svc-list">
             <li v-for="(s, i) in services" :key="i" class="svc-row">
@@ -200,14 +223,10 @@ watch(siteId, load)
               <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeService(i)">Remove</button>
             </li>
           </ul>
-          <p v-else class="adm-muted adm-mb">No services yet — add one to get started.</p>
-
-          <div class="svc-row svc-row--new">
-            <input class="adm-input svc-row__label" v-model="newService.label" placeholder="Label (e.g. Haircut)" @change="newService.id = slugify(newService.label)" />
-            <input class="adm-input svc-row__desc" v-model="newService.description" placeholder="Description" />
-            <div class="svc-row__dur"><NumberInput :model-value="newService.durationMinutes" :min="5" :step="5" unit="min" @update:model-value="(v: number) => newService.durationMinutes = v" /></div>
-            <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addService">Add</button>
-          </div>
+          <p v-else class="adm-muted adm-mb">
+            No services yet — add them on your
+            <RouterLink to="/admin/catalog" class="adm-link">Services page</RouterLink> and they'll appear here.
+          </p>
         </section>
 
         <!-- Hours -->

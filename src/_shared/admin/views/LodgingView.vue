@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { contentClient, type LodgingConfigDTO, type LodgingRoomDTO, type ReservationDTO } from '../../platform/contentClient'
 import { useActiveSiteStore } from '../../platform/activeSiteStore'
 import MoneyInput from '../components/inputs/MoneyInput.vue'
@@ -28,7 +29,7 @@ const rooms = ref<LodgingRoomDTO[]>([])
 const addOnEnabled = ref(false)
 const reservations = ref<ReservationDTO[]>([])
 
-const newRoom = ref<LodgingRoomDTO>({ id: '', label: '', description: '', capacity: 2, nightlyRateCents: undefined, imageUrl: '' })
+const syncStatus = ref<string | null>(null)
 
 async function load() {
   if (!siteId.value) return
@@ -49,20 +50,39 @@ async function load() {
   } finally {
     loading.value = false
   }
+  void syncFromContent()
 }
 
-function addRoom() {
-  const r = newRoom.value
-  if (!r.id.trim() || !r.label.trim()) return
-  rooms.value.push({
-    id: r.id.trim(),
-    label: r.label.trim(),
-    description: r.description?.trim() || undefined,
-    capacity: Math.max(1, Number(r.capacity) || 1),
-    nightlyRateCents: r.nightlyRateCents != null && r.nightlyRateCents > 0 ? Math.round(r.nightlyRateCents) : undefined,
-    imageUrl: r.imageUrl?.trim() || undefined,
-  })
-  newRoom.value = { id: '', label: '', description: '', capacity: 2, nightlyRateCents: undefined, imageUrl: '' }
+/* ── Rooms link ──
+   Bookable rooms ARE the site's Rooms content — the list on the Rooms page
+   feeds this one automatically. Rates/capacity are refined here. */
+async function syncFromContent() {
+  if (!siteId.value) return
+  try {
+    const d = await contentClient.getDraft(siteId.value)
+    const list = (d.payload.rooms as Array<{ name?: string; blurb?: string; rateFrom?: string; image?: string }> | undefined) ?? []
+    const existing = new Set(rooms.value.map(r => r.label.toLowerCase()))
+    let added = 0
+    for (const room of list) {
+      const name = (room.name ?? '').trim()
+      if (!name || existing.has(name.toLowerCase())) continue
+      const rate = Math.round((parseFloat(String(room.rateFrom ?? '').replace(/[^0-9.]/g, '')) || 0) * 100)
+      rooms.value.push({
+        id: slugify(name) || `room-${rooms.value.length + 1}`,
+        label: name,
+        description: room.blurb?.trim() || undefined,
+        capacity: 2,
+        nightlyRateCents: rate > 0 ? rate : undefined,
+        imageUrl: room.image?.trim() || undefined,
+      })
+      existing.add(name.toLowerCase())
+      added++
+    }
+    if (added) {
+      await saveConfig()
+      syncStatus.value = `Synced ${added} room${added === 1 ? '' : 's'} from your Rooms page.`
+    }
+  } catch { /* content draft unavailable — leave manual list as-is */ }
 }
 
 function removeRoom(i: number) { rooms.value.splice(i, 1) }
@@ -170,7 +190,11 @@ watch(siteId, load)
       <div class="adm-grid">
         <section class="adm-card">
           <h2 class="adm-h2">Rooms</h2>
-          <p class="adm-muted adm-mb">Each room appears as a bookable card on your reservations page.</p>
+          <p class="adm-muted adm-mb">
+            Linked to your <RouterLink to="/admin/catalog" class="adm-link">Rooms page</RouterLink> —
+            every room listed there is bookable automatically. Set capacity and rates here.
+          </p>
+          <p v-if="syncStatus" class="adm-muted adm-mb">{{ syncStatus }}</p>
 
           <ul v-if="rooms.length" class="rm-list">
             <li v-for="(r, i) in rooms" :key="i" class="rm-row">
@@ -182,16 +206,10 @@ watch(siteId, load)
               <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeRoom(i)">✕</button>
             </li>
           </ul>
-          <p v-else class="adm-muted adm-mb">No rooms yet.</p>
-
-          <div class="rm-row rm-row--new">
-            <input class="adm-input rm-row__label" v-model="newRoom.label" placeholder="Label (e.g. Pine Cabin)" @change="newRoom.id = slugify(newRoom.label)" />
-            <input class="adm-input rm-row__desc" v-model="newRoom.description" placeholder="Description" />
-            <div class="rm-row__cap"><NumberInput :model-value="newRoom.capacity" :min="1" unit="guests" @update:model-value="(v: number) => newRoom.capacity = v" /></div>
-            <div class="rm-row__rate"><MoneyInput :model-value="newRoom.nightlyRateCents ?? 0" :currency="resolved?.currency || 'USD'" @update:model-value="(v: number) => newRoom.nightlyRateCents = v" /></div>
-            <div class="rm-row__img"><ImageInput :model-value="newRoom.imageUrl ?? ''" :site-id="siteId" @update:model-value="(v: string) => newRoom.imageUrl = v" /></div>
-            <button type="button" class="adm-btn adm-btn--primary adm-btn--sm" @click="addRoom">Add</button>
-          </div>
+          <p v-else class="adm-muted adm-mb">
+            No rooms yet — add them on your
+            <RouterLink to="/admin/catalog" class="adm-link">Rooms page</RouterLink> and they'll appear here.
+          </p>
         </section>
 
         <section v-if="resolved" class="adm-card">

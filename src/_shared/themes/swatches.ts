@@ -57,6 +57,21 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     ink: '#F2F6DC', inkMuted: '#A2AC78', line: '#383F1C',
   },
 
+  'cacao-light': {
+    name: 'cacao-light', label: 'Cacao', mode: 'light', group: 'terra', family: 'cacao',
+    feel: 'Dark chocolate and burnt caramel on café-au-lait cream',
+    primary: '#5E3117', accent: '#C77E3D',
+    surface: '#F1E3D3', surfaceAlt: '#FAF3E9',
+    ink: '#201005', inkMuted: '#775539', line: '#DFC8AC',
+  },
+  'cacao-dark': {
+    name: 'cacao-dark', label: 'Cacao', mode: 'dark', group: 'terra', family: 'cacao',
+    feel: 'Roasted espresso, caramel light, cream type',
+    primary: '#D89B6A', accent: '#E8C08A',
+    surface: '#171009', surfaceAlt: '#251A10',
+    ink: '#F8EFE4', inkMuted: '#B4977C', line: '#3E2D1C',
+  },
+
   /* ── Coast · deep blues, teal, violet ──────────────────────── */
   'ultramarine-light': {
     name: 'ultramarine-light', label: 'Ultramarine', mode: 'light', group: 'coast', family: 'ultramarine',
@@ -99,6 +114,21 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     primary: '#A88FFF', accent: '#F0A268',
     surface: '#110A28', surfaceAlt: '#1B1240',
     ink: '#F0EBFC', inkMuted: '#9184BC', line: '#302156',
+  },
+
+  'fjord-light': {
+    name: 'fjord-light', label: 'Fjord', mode: 'light', group: 'coast', family: 'fjord',
+    feel: 'Nordic slate and salmon on glacial ice',
+    primary: '#2E5468', accent: '#E8886A',
+    surface: '#E5EDF1', surfaceAlt: '#F4F9FB',
+    ink: '#0E1C24', inkMuted: '#4C6270', line: '#C6D6DE',
+  },
+  'fjord-dark': {
+    name: 'fjord-dark', label: 'Fjord', mode: 'dark', group: 'coast', family: 'fjord',
+    feel: 'Deep water at dusk, ice light, salmon ember',
+    primary: '#7FB4D4', accent: '#F09A78',
+    surface: '#0A141B', surfaceAlt: '#12212B',
+    ink: '#E8F1F7', inkMuted: '#84A0B0', line: '#213542',
   },
 
   /* ── Solar · vermilion, wine, saffron ──────────────────────── */
@@ -145,6 +175,21 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     ink: '#FBF0DC', inkMuted: '#BC9E6C', line: '#443413',
   },
 
+  'hibiscus-light': {
+    name: 'hibiscus-light', label: 'Hibiscus', mode: 'light', group: 'solar', family: 'hibiscus',
+    feel: 'Hot hibiscus pink and tangerine on blush',
+    primary: '#CE1461', accent: '#F28C28',
+    surface: '#FBE2EA', surfaceAlt: '#FEF3F7',
+    ink: '#2A0714', inkMuted: '#8A3A58', line: '#F2C2D2',
+  },
+  'hibiscus-dark': {
+    name: 'hibiscus-dark', label: 'Hibiscus', mode: 'dark', group: 'solar', family: 'hibiscus',
+    feel: 'Tropical pink glowing against a midnight garden',
+    primary: '#FF5C9E', accent: '#F0A040',
+    surface: '#200512', surfaceAlt: '#320C1F',
+    ink: '#FDE8F1', inkMuted: '#C27C98', line: '#521832',
+  },
+
   /* ── Bold · the palette takes the page ─────────────────────── */
   'klein-light': {
     name: 'klein-light', label: 'Klein', mode: 'light', group: 'bold', family: 'klein',
@@ -176,10 +221,10 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
   },
   'signal-light': {
     name: 'signal-light', label: 'Signal', mode: 'light', group: 'bold', family: 'signal',
-    feel: 'The coral broadsheet. Ink type on a full coral page',
-    primary: '#17100B', accent: '#FFE9DC',
-    surface: '#FA5B33', surfaceAlt: '#FFE9DC',
-    ink: '#1B0D06', inkMuted: '#431505', line: '#E04A22',
+    feel: 'Coral-tinted paper, ink type, a full-strength coral signal',
+    primary: '#E03E17', accent: '#17100B',
+    surface: '#FFDCCE', surfaceAlt: '#FFF2EC',
+    ink: '#220D05', inkMuted: '#77361F', line: '#F4B9A3',
   },
   'signal-dark': {
     name: 'signal-dark', label: 'Signal', mode: 'dark', group: 'bold', family: 'signal',
@@ -187,6 +232,21 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     primary: '#FF5C33', accent: '#FFD9C8',
     surface: '#16100C', surfaceAlt: '#251610',
     ink: '#FFF0E8', inkMuted: '#C89078', line: '#46281C',
+  },
+
+  'cadmium-light': {
+    name: 'cadmium-light', label: 'Cadmium', mode: 'light', group: 'bold', family: 'cadmium',
+    feel: 'Cadmium-tinted paper, black type, taxi-yellow accents',
+    primary: '#171203', accent: '#F5CE0F',
+    surface: '#FFF0AC', surfaceAlt: '#FFFAE3',
+    ink: '#191203', inkMuted: '#5A4A10', line: '#EDD976',
+  },
+  'cadmium-dark': {
+    name: 'cadmium-dark', label: 'Cadmium', mode: 'dark', group: 'bold', family: 'cadmium',
+    feel: 'Hazard yellow cutting through blackout',
+    primary: '#FFD91F', accent: '#FFF3B8',
+    surface: '#131004', surfaceAlt: '#221C08',
+    ink: '#FFF8E0', inkMuted: '#C4B26A', line: '#453A0E',
   },
 
   /* ── Noir · near-black luxury, one jewel accent ────────────── */
@@ -233,6 +293,21 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     ink: '#F4ECFB', inkMuted: '#A48EC0', line: '#372350',
   },
 
+  'garnet-light': {
+    name: 'garnet-light', label: 'Garnet', mode: 'light', group: 'noir', family: 'garnet',
+    feel: 'Garnet ink and champagne bronze on warm porcelain',
+    primary: '#701A22', accent: '#B08048',
+    surface: '#F4EEEA', surfaceAlt: '#FCF9F6',
+    ink: '#1C0E0F', inkMuted: '#6E5A55', line: '#E2D5CC',
+  },
+  'garnet-dark': {
+    name: 'garnet-dark', label: 'Garnet', mode: 'dark', group: 'noir', family: 'garnet',
+    feel: 'Garnet and candlelight in a black-lacquer room',
+    primary: '#E08A90', accent: '#C89058',
+    surface: '#120B0C', surfaceAlt: '#1F1315',
+    ink: '#F7ECEB', inkMuted: '#A88A88', line: '#3A2426',
+  },
+
   /* ── Neon · signal hues that glow ──────────────────────────── */
   'volt-light': {
     name: 'volt-light', label: 'Volt', mode: 'light', group: 'neon', family: 'volt',
@@ -275,6 +350,20 @@ export const SWATCHES: Record<SwatchName, ColorSwatch> = {
     primary: '#BEF22B', accent: '#FF2BC9',
     surface: '#0C1004', surfaceAlt: '#161F09',
     ink: '#F0FBDA', inkMuted: '#93A46C', line: '#2C3A12',
+  },
+  'plasma-light': {
+    name: 'plasma-light', label: 'Plasma', mode: 'light', group: 'neon', family: 'plasma',
+    feel: 'International orange with an electric blue trace',
+    primary: '#C74505', accent: '#1B4FFF',
+    surface: '#FCF2E4', surfaceAlt: '#FEFAF2',
+    ink: '#221204', inkMuted: '#7C5434', line: '#F0D8B6',
+  },
+  'plasma-dark': {
+    name: 'plasma-dark', label: 'Plasma', mode: 'dark', group: 'neon', family: 'plasma',
+    feel: 'Infrared glow with a cobalt afterimage',
+    primary: '#FF6A1F', accent: '#4F7CFF',
+    surface: '#140803', surfaceAlt: '#231008',
+    ink: '#FFEFE2', inkMuted: '#C08C6C', line: '#46200C',
   },
 }
 

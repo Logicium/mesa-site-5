@@ -8,6 +8,7 @@
 import { ref, watch } from 'vue'
 import { ImagePlus, ImageOff } from 'lucide-vue-next'
 import { contentClient } from '../../../platform/contentClient'
+import { optimizeImage } from '../../../platform/imageOptimize'
 
 const props = withDefaults(defineProps<{
   label?: string
@@ -31,22 +32,13 @@ const fileEl = ref<HTMLInputElement | null>(null)
 const loadFailed = ref(false)
 watch(model, () => { loadFailed.value = false })
 
-function readAsDataUrl(file: Blob): Promise<string> {
-  return new Promise((res, rej) => {
-    const fr = new FileReader()
-    fr.onload = () => res(fr.result as string)
-    fr.onerror = rej
-    fr.readAsDataURL(file)
-  })
-}
-
 async function upload(file: File) {
-  if (!file.type.startsWith('image/')) { error.value = 'Please choose an image file.'; return }
   uploading.value = true
   error.value = null
   try {
-    const dataUrl = await readAsDataUrl(file)
-    const r = await contentClient.uploadMedia(props.siteId, file.name, file.type, dataUrl.split(',')[1] ?? '')
+    // Downscale + WebP re-encode (when it wins) + size validation, all client-side.
+    const opt = await optimizeImage(file)
+    const r = await contentClient.uploadMedia(props.siteId, opt.filename, opt.contentType, opt.base64)
     model.value = r.url
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

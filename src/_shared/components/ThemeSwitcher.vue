@@ -271,6 +271,20 @@ function jumpTo(key: keyof typeof sectionTargets) {
 const currentSwatch = computed(() =>
   resolvePresetSwatch(swatchName.value) ?? customSwatches.value.find(s => s.name === swatchName.value))
 
+/* ── Collapsed pill copy: human names, not ids. Title is the theme,
+   the meta line is the palette + register. Internals (variant, alignment)
+   stay inside the panel where they belong. */
+const pillTitle = computed(() =>
+  THEME_LIST.find(t => t.name === themeName.value)?.label ?? themeName.value)
+const pillMeta = computed(() => {
+  const s = currentSwatch.value
+  return s ? `${s.label} · ${s.mode === 'dark' ? 'Dark' : 'Light'}` : swatchName.value
+})
+const pillCoinStyle = computed(() => {
+  const s = currentSwatch.value
+  return s ? { background: `linear-gradient(135deg, ${s.primary} 0 52%, ${s.accent} 52% 100%)` } : {}
+})
+
 /* ── Studio mode toggle: every preset family has a light + dark version.
    The toggle previews and applies the matching side; picking a family
    applies `<family>-<mode>`. */
@@ -487,15 +501,12 @@ watch(() => prefs.value.themeAutosave, (on) => {
          independent of whether the visible pill is showing or hidden. -->
     <span ref="measureEl" class="ap-switcher__measure" aria-hidden="true">
       <span class="ap-switcher__pill" tabindex="-1">
-        <span class="ap-switcher__pill-chip">
-          <span class="ap-switcher__pill-chip-half" />
-          <span class="ap-switcher__pill-chip-half" />
-        </span>
+        <span class="ap-switcher__pill-coin" />
         <span class="ap-switcher__pill-info">
-          <span class="ap-switcher__pill-line">{{ themeName }} · {{ swatchName }}</span>
-          <span class="ap-switcher__pill-sub">{{ variant }} · {{ alignment }}</span>
+          <span class="ap-switcher__pill-line">{{ pillTitle }}</span>
+          <span class="ap-switcher__pill-sub">{{ pillMeta }}</span>
         </span>
-        <span class="ap-switcher__pill-icon"><Settings :size="16" /></span>
+        <span class="ap-switcher__pill-icon"><Settings :size="15" /></span>
       </span>
     </span>
 
@@ -510,15 +521,12 @@ watch(() => prefs.value.themeAutosave, (on) => {
       @click="onPillClick"
       aria-label="Open site settings"
     >
-      <span class="ap-switcher__pill-chip" aria-hidden="true">
-        <span class="ap-switcher__pill-chip-half" :style="{ background: currentSwatch?.primary }" />
-        <span class="ap-switcher__pill-chip-half" :style="{ background: currentSwatch?.accent }" />
-      </span>
+      <span class="ap-switcher__pill-coin" :style="pillCoinStyle" aria-hidden="true" />
       <span class="ap-switcher__pill-info">
-        <span class="ap-switcher__pill-line">{{ themeName }} · {{ swatchName }}</span>
-        <span class="ap-switcher__pill-sub">{{ variant }} · {{ alignment }}</span>
+        <span class="ap-switcher__pill-line">{{ pillTitle }}</span>
+        <span class="ap-switcher__pill-sub">{{ pillMeta }}</span>
       </span>
-      <span class="ap-switcher__pill-icon" aria-hidden="true"><Settings :size="16" /></span>
+      <span class="ap-switcher__pill-icon" aria-hidden="true"><Settings :size="15" /></span>
     </button>
 
     <!-- Expandable area — height transitions from 0 → measured px on the inner panel.
@@ -1060,59 +1068,69 @@ watch(() => prefs.value.themeAutosave, (on) => {
   width: max-content;
 }
 
-/* ── Collapsed pill ────────────────────────────────────── */
+/* ── Collapsed pill — quiet, precise, ultramodern ──────────
+   One color coin, the theme's name, the palette underneath, and a bare
+   glyph behind a hairline. Nothing shouts; everything reads. */
 .ap-switcher__pill {
-  display: flex; align-items: center; gap: 0.75rem;
+  display: flex; align-items: center; gap: 0.7rem;
   width: 100%;
   background: transparent; border: 0; cursor: pointer;
-  padding: 0.6rem 0.65rem 0.6rem 0.85rem;
+  padding: 0.5rem 0.35rem 0.5rem 0.8rem;
   color: var(--ap-ink); font: inherit;
   text-align: left;
   opacity: 1;
   transition: opacity 320ms ease;
 }
-.ap-switcher__pill-chip {
-  display: inline-flex;
-  width: 26px; height: 26px;
-  border-radius: var(--ap-radius, 6px);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ap-ink) 18%, transparent);
-  flex-shrink: 0;
-}
-[data-theme='vibrant'] .ap-switcher__pill-chip { border-radius: 50%; }
-.ap-switcher__pill-chip-half {
-  flex: 1; display: block; min-width: 0;
+.ap-switcher__pill-coin {
+  display: inline-block;
+  width: 24px; height: 24px;
+  border-radius: 50%;
   background: var(--ap-line);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ap-ink) 14%, transparent),
+    0 1px 4px color-mix(in srgb, var(--ap-ink) 18%, transparent);
+  flex-shrink: 0;
+  transition: transform 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
 }
+.ap-switcher__pill:hover .ap-switcher__pill-coin { transform: rotate(24deg) scale(1.05); }
 .ap-switcher__pill-info {
   display: inline-flex; flex-direction: column; justify-content: center;
-  gap: 0.05rem; min-width: 0;
+  gap: 0.1rem; min-width: 0;
 }
 .ap-switcher__pill-line {
-  font-size: 0.82rem; font-weight: 600;
+  font-size: 0.8rem; font-weight: 600;
   color: var(--ap-ink);
-  text-transform: lowercase;
   white-space: nowrap;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 .ap-switcher__pill-sub {
-  font-size: 0.66rem; font-weight: 500;
+  font-family: var(--ap-font-mono);
+  font-size: 0.6rem; font-weight: 500;
   color: var(--ap-ink-muted);
-  text-transform: lowercase;
-  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
   white-space: nowrap;
+  line-height: 1;
 }
 .ap-switcher__pill-icon {
   margin-left: auto;
   display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border-radius: 50%;
-  background: color-mix(in srgb, var(--ap-ink) 8%, transparent);
-  color: var(--ap-ink);
+  align-self: stretch;
+  padding: 0 0.7rem 0 0.75rem;
+  border-left: 1px solid color-mix(in srgb, var(--ap-line) 80%, transparent);
+  color: var(--ap-ink-muted);
   flex-shrink: 0;
-  transition: background 160ms ease;
+  transition: color 160ms ease;
 }
-.ap-switcher__pill-icon :deep(svg) { display: block; width: 16px; height: 16px; flex-shrink: 0; }
-.ap-switcher__pill:hover .ap-switcher__pill-icon { background: color-mix(in srgb, var(--ap-ink) 14%, transparent); }
+/* The gear spins; its container must not — the container carries the
+   hairline divider, and rotating that tilts the rule with it. */
+.ap-switcher__pill-icon :deep(svg) {
+  display: block; width: 15px; height: 15px; flex-shrink: 0;
+  transition: transform 240ms ease;
+}
+.ap-switcher__pill:hover .ap-switcher__pill-icon { color: var(--ap-ink); }
+.ap-switcher__pill:hover .ap-switcher__pill-icon :deep(svg) { transform: rotate(45deg); }
 
 /* ── Expand region ─ height transitions in sync with the pill leaving layout ─ */
 .ap-switcher {

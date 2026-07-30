@@ -324,9 +324,20 @@ export function useContentEditor() {
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => { if (typeof reader.result === 'string') setByPath(path, reader.result) }
-      reader.readAsDataURL(file)
+      // Same optimization pipeline as the admin uploaders: downscale + WebP
+      // (when smaller) so the data URL riding in the payload stays light.
+      void import('../platform/imageOptimize').then(async ({ optimizeImage, validateUploadSize }) => {
+        validateUploadSize(file) // hard reject oversize regardless of fallback
+        try {
+          const opt = await optimizeImage(file)
+          setByPath(path, `data:${opt.contentType};base64,${opt.base64}`)
+        } catch {
+          // Decode/encode hiccup — fall back to the original bytes.
+          const reader = new FileReader()
+          reader.onload = () => { if (typeof reader.result === 'string') setByPath(path, reader.result) }
+          reader.readAsDataURL(file)
+        }
+      }).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)) })
     }
     input.click()
   }

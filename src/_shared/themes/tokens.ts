@@ -83,26 +83,32 @@ export type SwatchFamily =
   | 'adobe'
   | 'pine'
   | 'matcha'
+  | 'cacao'
   // Coast
   | 'ultramarine'
   | 'lagoon'
   | 'iris'
+  | 'fjord'
   // Solar
   | 'vermilion'
   | 'rosewood'
   | 'saffron'
+  | 'hibiscus'
   // Bold
   | 'klein'
   | 'riot'
   | 'signal'
+  | 'cadmium'
   // Noir
   | 'onyx'
   | 'midnight'
   | 'velvet'
+  | 'garnet'
   // Neon
   | 'volt'
   | 'aurora'
   | 'acid'
+  | 'plasma'
 
 export type SwatchName = `${SwatchFamily}-light` | `${SwatchFamily}-dark`
 

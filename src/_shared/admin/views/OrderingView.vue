@@ -268,8 +268,15 @@ function pickupLocal(iso: string) {
   }).format(new Date(iso))
 }
 
-onMounted(load)
-watch(siteId, load)
+/* Menu → Ordering is a live link: after load, silently pull in any dish
+   that isn't sellable yet (idempotent — matches by name). The button in
+   the header stays as a manual re-sync. */
+async function loadAndSync() {
+  await load()
+  await importFromMenu()
+}
+onMounted(loadAndSync)
+watch(siteId, loadAndSync)
 </script>
 
 <template>

@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
   contentClient,
   type EventDTO,
-  type EventInput,
   type EventStatusDTO,
   type TicketDTO,
   type TicketTierDTO,
@@ -13,7 +13,6 @@ import MoneyInput from '../components/inputs/MoneyInput.vue'
 import NumberInput from '../components/inputs/NumberInput.vue'
 import ToggleInput from '../components/inputs/ToggleInput.vue'
 import SelectInput from '../components/inputs/SelectInput.vue'
-import ImageInput from '../components/inputs/ImageInput.vue'
 
 /** Tier ids derive from the label — owners never hand-write slugs. */
 function slugifyTier(s: string): string {
@@ -28,23 +27,8 @@ const error = ref<string | null>(null)
 const addOnEnabled = ref(false)
 
 const events = ref<EventDTO[]>([])
-const newEvent = ref<EventInput>(emptyEventInput())
 const expanded = ref<string | null>(null)
 const ticketsByEvent = ref<Record<string, TicketDTO[]>>({})
-
-function emptyEventInput(): EventInput {
-  return {
-    title: '',
-    description: '',
-    startsAt: defaultStart(),
-    venue: '',
-    imageUrl: '',
-    capacity: -1,
-    currency: 'USD',
-    tiers: [{ id: 'general', label: 'General Admission', priceCents: 0, capacity: -1, active: true }],
-    status: 'draft',
-  }
-}
 
 function defaultStart() {
   const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -78,6 +62,47 @@ async function load() {
   } finally {
     loading.value = false
   }
+  void syncFromContent()
+}
+
+/* ── Events link ──
+   Ticketed events ARE the site's Events content: everything on the Events
+   page lands here automatically as a draft (General Admission tier, price
+   parsed from its label). Tiers, capacity, and publishing happen here. */
+const syncStatus = ref<string | null>(null)
+async function syncFromContent() {
+  if (!siteId.value) return
+  try {
+    const d = await contentClient.getDraft(siteId.value)
+    const list = (d.payload.events as Array<{ title?: string; date?: string; startTime?: string; priceLabel?: string; image?: string; blurb?: string }> | undefined) ?? []
+    const existing = new Set(events.value.map(e => e.title.toLowerCase()))
+    let added = 0
+    for (const ev of list) {
+      const title = (ev.title ?? '').trim()
+      if (!title || existing.has(title.toLowerCase())) continue
+      const startsRaw = ev.date ? new Date(`${ev.date}T${(ev.startTime || '19:00').padStart(5, '0')}`) : null
+      const startsAt = startsRaw && !Number.isNaN(startsRaw.getTime()) ? startsRaw.toISOString() : fromLocalInput(defaultStart())
+      const priceCents = Math.round((parseFloat(String(ev.priceLabel ?? '').replace(/[^0-9.]/g, '')) || 0) * 100)
+      const created = await contentClient.ticketingCreateEvent(siteId.value, {
+        title,
+        description: ev.blurb?.trim() || '',
+        startsAt,
+        venue: '',
+        imageUrl: ev.image?.trim() || '',
+        capacity: -1,
+        currency: 'USD',
+        tiers: [{ id: 'general', label: 'General Admission', priceCents, capacity: -1, active: true }],
+        status: 'draft',
+      })
+      events.value.push(created)
+      existing.add(title.toLowerCase())
+      added++
+    }
+    if (added) {
+      events.value.sort((a, b) => (a.startsAt < b.startsAt ? -1 : 1))
+      syncStatus.value = `Synced ${added} event${added === 1 ? '' : 's'} from your Events page — drafts until you publish them.`
+    }
+  } catch { /* content draft unavailable — leave list as-is */ }
 }
 
 async function toggleAddOn() {
@@ -85,23 +110,6 @@ async function toggleAddOn() {
   try {
     const res = await contentClient.setSiteAddOn(siteId.value, 'ticketing', !addOnEnabled.value)
     addOnEnabled.value = res.addOns.includes('ticketing')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
-async function createEvent() {
-  if (!siteId.value) return
-  const i = newEvent.value
-  if (!i.title.trim()) return
-  try {
-    const created = await contentClient.ticketingCreateEvent(siteId.value, {
-      ...i,
-      startsAt: fromLocalInput(i.startsAt),
-      endsAt: i.endsAt ? fromLocalInput(i.endsAt) : undefined,
-    })
-    events.value.unshift(created)
-    newEvent.value = emptyEventInput()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -146,10 +154,6 @@ async function deleteEvent(e: EventDTO) {
 function addTier(e: EventDTO) {
   const idx = e.tiers.length + 1
   e.tiers.push({ id: `tier-${idx}`, label: `Tier ${idx}`, priceCents: 0, capacity: -1, active: true })
-}
-function addTierNew() {
-  const idx = newEvent.value.tiers.length + 1
-  newEvent.value.tiers.push({ id: `tier-${idx}`, label: `Tier ${idx}`, priceCents: 0, capacity: -1, active: true })
 }
 function removeTier(tiers: TicketTierDTO[], id: string) {
   const i = tiers.findIndex(t => t.id === id)
@@ -249,36 +253,16 @@ watch(siteId, load)
       </div>
 
       <section class="adm-card">
-        <h2 class="adm-h2">New event</h2>
-        <div class="grid">
-          <label>Title<input class="adm-input" v-model="newEvent.title" /></label>
-          <label>Venue<input class="adm-input" v-model="newEvent.venue" /></label>
-          <label>Starts<input class="adm-input" type="datetime-local" v-model="newEvent.startsAt" /></label>
-          <div><NumberInput v-model="newEvent.capacity" label="Capacity" :min="-1" unit="seats · -1 = ∞" /></div>
-          <SelectInput v-model="newEvent.currency" label="Currency" :options="['USD','CAD','EUR','GBP','MXN'].map(c => ({ value: c, label: c }))" />
-          <SelectInput v-model="newEvent.status" label="Status" :options="statusOptions.map(s => ({ value: s, label: s.replace('_', ' ') }))" />
-          <label class="grid__full">Description<textarea class="adm-input" v-model="newEvent.description" rows="2" /></label>
-          <div class="grid__full"><ImageInput :model-value="newEvent.imageUrl ?? ''" :site-id="siteId" label="Event image" @update:model-value="(v: string) => newEvent.imageUrl = v" /></div>
-        </div>
-        <h3 class="adm-h3">Tiers</h3>
-        <ul class="rm-list">
-          <li v-for="t in newEvent.tiers" :key="t.id" class="rm-row">
-            <input class="adm-input rm-row__name" v-model="t.label" placeholder="Label (e.g. General admission)" @change="t.id = t.id || slugifyTier(t.label)" />
-            <div class="rm-row__price"><MoneyInput v-model="t.priceCents" :currency="newEvent.currency || 'USD'" /></div>
-            <div class="rm-row__inv"><NumberInput v-model="t.capacity" :min="-1" unit="seats" /></div>
-            <div class="rm-row__active"><ToggleInput :model-value="t.active ?? true" label="Live" @update:model-value="(v: boolean) => t.active = v" /></div>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="removeTier(newEvent.tiers, t.id)">✕</button>
-          </li>
-        </ul>
-        <div class="adm-row-actions">
-          <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" @click="addTierNew">+ Add tier</button>
-          <button type="button" class="adm-btn adm-btn--primary" @click="createEvent">Create event</button>
-        </div>
-      </section>
-
-      <section class="adm-card">
         <h2 class="adm-h2">Events</h2>
-        <p v-if="!events.length" class="adm-muted">No events yet.</p>
+        <p class="adm-muted adm-mb">
+          Linked to your <RouterLink to="/admin/catalog" class="adm-link">Events page</RouterLink> —
+          new events land here automatically as drafts. Set tiers and publish them below.
+        </p>
+        <p v-if="syncStatus" class="adm-muted adm-mb">{{ syncStatus }}</p>
+        <p v-if="!events.length" class="adm-muted">
+          No events yet — add them on your
+          <RouterLink to="/admin/catalog" class="adm-link">Events page</RouterLink> and they'll appear here.
+        </p>
         <ul v-else class="event-list">
           <li v-for="e in events" :key="e.id" class="event-row">
             <div class="event-head">
