@@ -19,9 +19,25 @@ export default defineConfig({
   ],
   // Read .env.local from the monorepo root so all templates share one file.
   envDir: '..',
-  resolve: { alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@apotome/archetype-shared/': fileURLToPath(new URL('./src/_shared/', import.meta.url)),
-      '@apotome/archetype-shared': fileURLToPath(new URL('./src/_shared/index.ts', import.meta.url)),
-    } },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        // Resolve bare '@use "core"' in BOTH layouts: the monorepo sibling
+        // package, and a published site where archetype-shared is vendored
+        // into src/_shared/. Sass skips load paths that don't exist, so the
+        // same config works in either place with no rewriting.
+        loadPaths: [
+          fileURLToPath(new URL('./src/_shared/styles', import.meta.url)),
+          fileURLToPath(new URL('../archetype-shared/src/styles', import.meta.url)),
+        ],
+      },
+    },
+  },
+  resolve: {
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      { find: /^@apotome\/archetype-shared\/(.*)$/, replacement: fileURLToPath(new URL('./src/_shared/', import.meta.url)) + '$1' },
+      { find: /^@apotome\/archetype-shared$/, replacement: fileURLToPath(new URL('./src/_shared/index.ts', import.meta.url)) },
+    ],
+  },
 })
